@@ -1,0 +1,383 @@
+import os
+import json
+import matplotlib.pyplot as plt
+import re
+import numpy as np
+
+all_values = []
+
+def extract_profile(directory):
+    label = os.path.basename(directory)
+
+    if "_profile_" in label:
+        start_index = label.find("_profile_") + len("_profile_")
+
+    elif "_ntrain_" in label:
+        start_index = label.find("ntrain_") + len("ntrain_") + 1
+
+    else:
+        start_index = 0
+
+    if "_2023" in label:
+        end_index = label.find("_2023")
+    else:
+        end_index = len(label)
+
+    label = label[start_index:end_index]
+
+    return label
+def subjects_average(data, subjects_to_average, metric="accuracy"):
+    present_subjects = list(data['metrics'].keys())
+
+    # all subjects to average are present
+    if all(avg_s in present_subjects for avg_s in subjects_to_average):
+        return np.mean([data['metrics'][s][metric] for s in subjects_to_average])
+    else:
+        return None
+
+
+def extract_by_key(directory, key="Hobbies"):
+    if key is None:
+        return os.path.basename(directory)
+
+    pattern = rf'{key}:([^_]+)'
+    match = re.search(pattern, directory)
+    if match:
+        return match.group(1)
+    else:
+        return 'Unknown'
+
+
+def plot_baseline(ax, directory, offset, keys_to_plot=None, subj=None, bar_width=1.0, min_bar_size=0.1, horizontal_bar=False, value_limit=250):
+    with open(os.path.join(directory, 'results.json'), 'r') as f:
+        data = json.load(f)
+
+    if subj:
+        draw_metrics = data['metrics'][subj]
+
+    else:
+        # only one subject
+        subjects = list(data['metrics'].keys())
+
+        if len(subjects) == 1:
+            draw_metrics = list(data['metrics'].values())[0]
+
+        # only one metric
+        elif (
+                # all the subjects have only one metric
+                len(set([len(v.keys()) for v in data['metrics'].values()])) == 1
+        ) and (
+                # that is the same metric
+                len(set([list(v.keys())[0] for v in data['metrics'].values()])) == 1
+        ):
+            draw_metrics = {}
+            for subj, metrics in data['metrics'].items():
+                # only one metric
+                assert len(metrics.keys()) == 1
+                value = list(metrics.values())[0]
+
+                draw_metrics[subj] = value
+
+        else:
+            draw_metrics = {}
+            for subj, metrics in data['metrics'].items():
+                for metric, value in metrics.items():
+                    draw_metrics[f"{subj}_{metric}"] = value
+
+        # add averages
+        mean_college_perf = subjects_average(subjects_to_average=[
+            "college_biology",
+            "college_chemistry",
+            "college_computer_science",
+            "college_mathematics",
+            "college_medicine",
+            "college_physics",
+        ], metric='accuracy', data=data)
+
+        if mean_college_perf is not None:
+            draw_metrics["Mean"] = mean_college_perf
+
+        mean_hs_perf = subjects_average(subjects_to_average=[
+            "high_school_biology",
+            "high_school_chemistry",
+            "high_school_computer_science",
+            "high_school_european_history",
+            "high_school_geography",
+            "high_school_mathematics",
+            "high_school_physics",
+            "high_school_psychology",
+            "high_school_us_history",
+            "high_school_world_history",
+        ], metric='accuracy', data=data)
+
+        if mean_hs_perf is not None:
+            draw_metrics["Mean"] = mean_hs_perf
+
+        mean_tom = subjects_average(subjects_to_average=[
+            "tomi_second_order_tom",
+            "tomi_first_order_tom",
+            "tomi_second_order_no_tom",
+            "tomi_first_order_no_tom"
+        ], metric='accuracy', data=data)
+
+        if mean_tom is not None:
+            draw_metrics["Mean ToM"] = mean_tom
+
+        mean_tom_fo = subjects_average(subjects_to_average=[
+            "tomi_first_order_tom",
+            "tomi_first_order_no_tom"
+        ], metric='accuracy', data=data)
+
+        if mean_tom_fo is not None:
+            draw_metrics["Mean ToM (fo)"] = mean_tom_fo
+
+    if keys_to_plot is None:
+        # use all the keys
+        keys = list(draw_metrics.keys())
+    else:
+        keys = keys_to_plot
+
+    key_indices = {key: i for i, key in enumerate(keys)}
+
+    values = [draw_metrics[key] for key in keys]
+
+    key = None
+    # key = "Favorite music genre"
+    # key = "Political organization of the country of growing up"
+    # key = "Political system of home country"
+    # key = "Type of home society"
+    # key = "Favorite movie character"
+    # key = "hobbies"
+
+    # label = extract_by_key(directory, key=key)
+    label = extract_profile(directory)
+    x_values = [key_indices[key] + offset for key in keys]
+
+    x_values = [v+bar_width/2 for v in x_values]
+
+
+    def color_for_edge(label):
+        label_to_color = {
+            # "Rome": "darksalmon",
+            # "Spain": "black",
+        }
+
+        for k, v in label_to_color.items():
+            if k in label:
+                return v
+
+        return None
+
+    def color_for_label(label):
+        label_to_color = {
+            "Democracy": "blue",
+            "Theocracy": "black",
+            # "Communism": "red",
+            "Totalitarianism": "gold",
+            "Anarchy": "brown",
+
+            # "Christianity": "lightyellow",
+            # "Pagan": "gray"
+        }
+
+        for k, v in label_to_color.items():
+            if k in label:
+                return v
+
+        return None
+
+    # create dummy bars if 0
+    v_to_add = []
+    x_to_add = []
+
+    all_values.append(values)
+
+    for ind, v in enumerate(values):
+        if abs(v) < bar_width/2:
+            v_to_add.extend([min_bar_size, -min_bar_size])
+            x_to_add.extend([x_values[ind], x_values[ind]])
+
+    values = values + v_to_add
+    x_values = x_values + x_to_add
+
+    if horizontal_bar:
+        # draw a horizontal bar
+        ax.barh(x_values, values, label=label, height=bar_width, color=color_for_label(label))
+
+    else:
+        ax.bar(x_values, values, label=label, width=bar_width, color=color_for_label(label))
+        #, facecolor=color_for_label(label), edgecolor=color_for_edge(label), linewidth=2)
+
+    if args.horizontal_bar:
+        assert all([-value_limit <= v <= value_limit for v in values])
+        ax.set_xlim([-value_limit, value_limit])
+
+        ax.set_ylabel('Values', fontsize=15)
+        ax.set_xlabel('Scores', fontsize=15)
+
+    else:
+        # set y-axis limits
+        ax.set_ylim([0, max([1, *values])+0.1])
+
+        ax.set_xlabel('Values', fontsize=15)
+        ax.set_ylabel('Scores', fontsize=15)
+
+    if "gpt-3.5-turbo-0301" in directory:
+        ax.set_title("gpt-3.5-turbo-0301")
+
+    elif "gpt-4-0314" in directory:
+        ax.set_title("gpt-4-0314")
+
+    if not args.separate_legend:
+        ax.legend(loc="best", fontsize=15)
+
+    return keys
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('directories', nargs='+', help='directories containing results.json files')
+    parser.add_argument('--save', action="store_true")
+    parser.add_argument('--separate_legend', action="store_true")
+    parser.add_argument('--filename', type=str, default="hobbies_pvq")
+    parser.add_argument('--horizontal-bar', '-hb', action="store_true")
+    args = parser.parse_args()
+
+    keys_to_plot = None
+    # keys_to_plot = ['Conformity', 'Tradition', 'Benevolence', 'Universalism', 'Self-Direction', 'Stimulation', 'Hedonism', 'Achievement', 'Power', 'Security']
+    # keys_to_plot = ["power_distance", "individualism", "masculinity", "uncertainty_avoidance", "long_term_orientation", "indulgence"]
+
+    bar_width = 0.10
+    bar_margin = 1.2
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    all_bars_width = len(args.directories) * (bar_width*bar_margin)  # bars with margins
+
+    keys = None
+
+    # chronological order
+    directories = args.directories
+
+    for soc_type in ["Hunter-Gatherer", "Horticultural and Pastoral", "Agricultural", "Industrial", "Postindustrial"]:
+        for d in directories:
+            if soc_type in d:
+                directories.append(d)
+
+    if any(["Age" in d for d in directories]):
+        # extract the number after Age:
+        def sort_by_key(directories, key):
+            dir_2_value = {}
+            for dir in directories:
+                value = extract_by_key(dir, key)
+                value = int(value) if value.isdigit() else -1
+                dir_2_value[dir] = value
+
+            # sort by value
+            sorted_directories = sorted(directories, key=dir_2_value.get)
+            return sorted_directories
+
+        directories = sort_by_key(directories, "Age")
+
+    # remove directories which contain substrings from the list
+    ignore_patterns = []
+    ignore_patterns = ["gen_space", "gen_w_space"]
+    print("Ignoring patterns: ", ignore_patterns)
+
+    for substring in ignore_patterns:
+        directories = [d for d in directories if substring not in d]
+
+    for i, directory in enumerate(directories):
+
+        offset = -all_bars_width/2 + (i/len(args.directories))*all_bars_width
+        keys_ = plot_baseline(ax, directory, offset, keys_to_plot=keys_to_plot, bar_width=bar_width, min_bar_size=0.05, horizontal_bar=args.horizontal_bar)
+
+        # check that keys are the same in all the baselines
+        assert keys is None or keys_ == keys
+        keys = keys_
+
+    # variance over baselines per value
+    variances = np.array(all_values).var(axis=0)
+    # assert len(variances) != len(directories)
+
+    # mean over value dimensions
+    mean_variance = variances.mean()
+
+    print(f"Mean (over values) Variance (over baselines): {mean_variance}")
+
+    if args.horizontal_bar:
+
+        # Set the yticks labels on the left side
+        y_locs = list(range(len(keys)))
+
+
+        # right labels
+        key_to_hofstede_label_right = {
+            "power_distance": "high power distance",
+            "individualism": "individualistic",
+            "masculinity": "masculine",
+            "uncertainty_avoidance": "high uncertainty_avoidance",
+            "long_term_orientation": "long term orientation",
+            "indulgence": "indulgence",
+        }
+
+        key_to_hofstede_label_left = {
+            "power_distance": "low power distance",
+            "individualism": "collectivistic",
+            "masculinity": "feminine",
+            "uncertainty_avoidance": "low uncertainty avoidance",
+            "long_term_orientation": "short term orientation",
+            "indulgence": "restraint",
+        }
+
+        left_labels = [key_to_hofstede_label_left.get(k) for k in keys]
+        right_labels = [key_to_hofstede_label_right.get(k) for k in keys]
+
+        # add left ticks
+        ax.set_yticks(y_locs)
+        ax.set_yticklabels(left_labels)
+
+        ax2 = ax.twinx()
+        ax2.set_ylim(ax.get_ylim())
+        ax2.set_yticks(y_locs)
+        ax2.set_yticklabels(right_labels)
+
+    else:
+        ax.set_xticks(range(len(keys)))
+        ax.set_xticklabels(keys, rotation=45)
+
+    if args.save:
+        for ext in ["png", "svg"]:
+            savepath = f"visualizations/{args.filename}.{ext}"
+            print(f"Saved to: {savepath}")
+            plt.tight_layout()
+            plt.savefig(savepath)
+
+            if args.separate_legend:
+                # create a new figure and axes object for the legend
+                fig_legend, ax_legend = plt.subplots(figsize=(4, 4))
+
+                # call the legend() method with the original axes object and the new axes object
+                ax_legend.legend(*ax.get_legend_handles_labels(), loc="center")
+
+                # remove the x and y ticks from the legend axes object
+                ax_legend.set_xticks([])
+                ax_legend.set_yticks([])
+
+
+                # ax.set_frame_on(False)
+                # ax.xaxis.set_visible(False)
+                # ax.yaxis.set_visible(False)
+                # ax.axis('off')
+
+                # save the legend as a separate image
+                savepath_legend = f"visualizations/{args.filename}_legend.{ext}"
+                print(f"Saved legend to: {savepath_legend}")
+                plt.tight_layout()
+                plt.gca().set_axis_off()
+                plt.savefig(savepath_legend)
+
+    else:
+        plt.show()

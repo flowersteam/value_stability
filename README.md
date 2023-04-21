@@ -1,8 +1,58 @@
-# Measuring Massive Multitask Language Understanding
-This is the repository for [Measuring Massive Multitask Language Understanding](https://arxiv.org/pdf/2009.03300) by
-[Dan Hendrycks](https://people.eecs.berkeley.edu/~hendrycks/), [Collin Burns](http://collinpburns.com), [Steven Basart](https://stevenbas.art), [Andy Zou](https://andyzoujm.github.io/), Mantas Mazeika, [Dawn Song](https://people.eecs.berkeley.edu/~dawnsong/), and [Jacob Steinhardt](https://www.stat.berkeley.edu/~jsteinhardt/) (ICLR 2021).
+# Measuring Massive Multitask Language Understanding This is the repository for [Measuring Massive Multitask Language Understanding](https://arxiv.org/pdf/2009.03300) by [Dan Hendrycks](https://people.eecs.berkeley.edu/~hendrycks/), [Collin Burns](http://collinpburns.com), [Steven Basart](https://stevenbas.art), [Andy Zou](https://andyzoujm.github.io/), Mantas Mazeika, [Dawn Song](https://people.eecs.berkeley.edu/~dawnsong/), and [Jacob Steinhardt](https://www.stat.berkeley.edu/~jsteinhardt/) (ICLR 2021). This repository contains OpenAI API evaluation code, and the test is available for download [**here**](https://people.eecs.berkeley.edu/~hendrycks/data.tar).
 
-This repository contains OpenAI API evaluation code, and the test is available for download [**here**](https://people.eecs.berkeley.edu/~hendrycks/data.tar).
+
+## Installation
+
+Setup you conda env
+```
+conda create -n llm_persp python=3.9
+pip install -r requirements.txt 
+```
+
+
+Install llama
+``` pip install -r <llama_path>/requirements.txt```
+``` pip install -e <llama_path>```
+
+Set up llama_dir in evaluate.py - the dir with checkpoints and encoder
+
+Run LLaMa evaluation by:
+```
+torchrun --nproc_per_node <MP> evaluate.py -k 1 -d data -e <model>
+```
+
+Different models require different MP values:
+
+| Model     | MP |
+|-----------|----|
+| llama_7B  | 1  |
+| llama_13B | 2  |
+| llama_30B | 4  |
+| llama_65B | 8  |
+
+Replace 7B with 13B, 30B, 65B per choice.
+
+Run OpenAI Evaluation by:
+```
+python evaluate.py -k 1 -d data --e <model>
+```
+model values: "chat_gpt", "text-davinci-003", "text-davinci-002", "text-davinci-001", "curie", "babbage", "ada"
+
+# Political compass
+To evaluate on political compas use (from ./test)
+```
+python evaluate.py -k 0 -d data_political_compass --e <model>
+```
+
+And then (from ./test)
+```
+python evaluate_political_compass_csv.py -i ./test/results/political_compass/<results>.csv
+```
+
+# ToMi
+```
+python evaluate.py -k 3 -d data_tomi --e <model> -gqa
+```
 
 ## Test Leaderboard
 
