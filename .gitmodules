@@ -1,0 +1,3 @@
+[submodule "llama"]
+	path = llama
+	url = git@gitlab.inria.fr:gkovac/llama.git
