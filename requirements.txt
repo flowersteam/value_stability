@@ -86,3 +86,4 @@ wcwidth==0.2.6
 wsproto==1.2.0
 yarl==1.8.2
 zipp==3.15.0
+git+https://github.com/huggingface/transformers@c612628045822f909020f7eb6784c79700813eda

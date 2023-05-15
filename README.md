@@ -3,7 +3,14 @@
 
 ## Installation
 
-Setup you conda env
+Initialize and fetch the llama submodule
+```
+git submodule update --init --recursive
+```
+
+
+
+Setup the conda env
 ```
 conda create -n llm_persp python=3.9
 pip install -r requirements.txt 
@@ -11,8 +18,8 @@ pip install -r requirements.txt
 
 
 Install llama
-``` pip install -r <llama_path>/requirements.txt```
-``` pip install -e <llama_path>```
+``` pip install -r llama/requirements.txt```
+``` pip install -e llama/```
 
 Set up llama_dir in evaluate.py - the dir with checkpoints and encoder
 
