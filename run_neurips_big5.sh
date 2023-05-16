@@ -8,8 +8,8 @@
 ########################
 
 ##### Sys: 2nd 3rd | Usr: 2nd 3rd
-# GPT-4 (5)
-# GPT-3.5 (5)
+# GPT-4 (5) & 17.49 & 17.89 & 17.73 & 18.39
+# GPT-3.5 (5) & 17.8 & 18.98 & 19.13 & 19.41
 # GPT-3.5 (50)
 # OA (50) & 3.098 & 2.429 & 2.859 & 4.927
 # StableVicuna (50) & n/a & n/a & 2.15 & 3.35
@@ -25,18 +25,18 @@
 #)
 #
 #message_options=(
-##  "System"
+#  "System"
 #  "User"
 #)
 #
 #person_options=(
-##  "2nd"
+#  "2nd"
 #  "3rd"
 #)
 #
 ##ENGINE="gpt-4-0314"
-##ENGINE="gpt-3.5-turbo-0301"
-#ENGINE="openassistant_rlhf2_llama30b"
+#ENGINE="gpt-3.5-turbo-0301"
+##ENGINE="openassistant_rlhf2_llama30b"
 ##ENGINE="stablevicuna"
 ##ENGINE="stablelm"
 #
@@ -68,14 +68,14 @@
 #done
 #done
 #done
-
+#
 
 #####################
 ## 4. Smoothness
 #####################
 
-#### Big5
-#############
+### Big5
+############
 
 # Best
 # GPT-4 (5)
@@ -86,7 +86,7 @@
 # StableLM (50) U2
 
 perspective_intensity_list=(
-#  "slight"
+  "slight"
   "medium"
 #  "extreme"
 )
@@ -103,14 +103,14 @@ big5_values_list=(
 
 
 #ENGINE="gpt-4-0314"
-#ENGINE="gpt-3.5-turbo-0301"
-ENGINE="openassistant_rlhf2_llama30b"
+ENGINE="gpt-3.5-turbo-0301"
+#ENGINE="openassistant_rlhf2_llama30b"
 #ENGINE="stablevicuna"
 #ENGINE="stablelm"
 #ENGINE="dummy"
 
 message="User"
-person="3rd"
+person="2nd"
 
 # Results
 # Slight Medium

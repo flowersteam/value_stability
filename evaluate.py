@@ -62,6 +62,7 @@ from crop import crop
 from evaluate_political_compass_csv import evaluate_csv_file
 
 openai.api_key = os.environ["OPENAI_API_KEY"]
+print("OPENAI KEY:", openai.api_key)
 
 choices = ["A", "B", "C", "D", "E", "F"]
 # choices = ["a", "b", "c", "d", "e", "f"]
@@ -188,8 +189,10 @@ def get_prompt_skeleton(subject, experiment_name, args):
                     amount_str = "extremely more importance"
                 elif args.perspective_amount == "slight":
                     amount_str = "slightly more importance"
-                else:
+                elif args.perspective_amount == "medium":
                     amount_str = "the most importance"
+                else:
+                    raise ValueError("Unrecognized perspective amount {args.perspective_amount}.")
 
                 if args.direct_perspective:
                     set_perspective_str = f"You are a person attributing {amount_str} to high {primary_values_str}."
@@ -1192,6 +1195,7 @@ def main(args):
                     # long_term_orientation = 40(m13 – m14) + 25(m19 – m22) + C(ls)
                     # indulgence = 35(m12 – m11) + 40(m17 – m16) + C(ir)
 
+
                     # indices start from 0
                     metrics[perm_i][subject] = {
                         "Power Distance": 35*(preds_values[6] - preds_values[1]) + 25*(preds_values[19] - preds_values[22]),
@@ -1201,6 +1205,7 @@ def main(args):
                         "Long-Term Orientation": 40*(preds_values[12] - preds_values[13]) + 25*(preds_values[18] - preds_values[21]),
                         "Indulgence": 35*(preds_values[11] - preds_values[10]) + 40*(preds_values[16] - preds_values[15])
                     }
+
                     metrics[perm_i][subject] = {k: float(v) for k, v in metrics[perm_i][subject].items()}
 
                 elif "big5" in args.data_dir:

@@ -325,6 +325,8 @@ if __name__ == '__main__':
     if figure_draw:
         bar_width = 0.9
 
+    mean_primary_value_alignment = None
+
     fig, ax = plt.subplots(figsize=(12, 6))
 
     all_bars_width = len(args.directories) * (bar_width*bar_margin)  # bars with margins
@@ -470,26 +472,65 @@ if __name__ == '__main__':
             # avg_primary_values = np.mean([data['metrics'][test_set_name][val] for val in primary_values])
             # avg_other_values = np.mean([data['metrics'][test_set_name][val] for val in list(set(test_set_values) - set(primary_values))])
             # primary_value_alignment = avg_primary_values - avg_other_values
+            from collections import defaultdict
+            normalizing_constants = {
+                    "pvq_male": defaultdict(lambda: 5),
+                    "hofstede": {
+                        "Power Distance": 2*300,
+                        "Individualism": 2*350,
+                        "Masculinity": 2*350,
+                        "Uncertainty Avoidance": 2*325,
+                        "Long-Term Orientation": 2*325,
+                        "Indulgence": 2*375,
+                    },
+                    "big5_50": defaultdict(lambda: 50),
+            }
+
+            normalizing_offset = {
+                "pvq_male": defaultdict(lambda: -1),
+                "hofstede": {
+                    "Power Distance": 0,
+                    "Individualism": 0,
+                    "Masculinity": 0,
+                    "Uncertainty Avoidance": 0,
+                    "Long-Term Orientation": 0,
+                    "Indulgence": 0,
+                },
+                "big5_50": defaultdict(lambda: 0),
+            }
+
+            # print("No normalization")
+            # normalizing_constants = defaultdict(lambda :defaultdict(lambda:1))
+            # normalizing_offset = defaultdict(lambda :defaultdict(lambda:0))
 
             for perm_metrics in data["per_permutation_metrics"]:
-                avg_primary_values = np.mean([perm_metrics[test_set_name][val] for val in primary_values])
+
+                # we normalize by (x+normalizing_offset)/normalizing_constant
+
+                norm_perm_metrics = {
+                    val: (
+                                 perm_metrics[test_set_name][val]+normalizing_offset[test_set_name][val]
+                    )/normalizing_constants[test_set_name][val] for val in test_set_values
+                }
+
+                avg_primary_values = np.mean([norm_perm_metrics[val] for val in primary_values])
                 avg_other_values = np.mean(
-                    [perm_metrics[test_set_name][val] for val in list(set(test_set_values) - set(primary_values))])
+                    [norm_perm_metrics[val] for val in list(set(test_set_values) - set(primary_values))])
                 perm_alignment = avg_primary_values - avg_other_values
-                print("permutation alignment: ", perm_alignment)
+                # print("permutation alignment: ", perm_alignment)
                 primary_value_alignments.append(perm_alignment)
 
             perspective_value_alignment = np.mean(primary_value_alignments[-len(data["per_permutation_metrics"]):])
-            print(f"Primary value alignment for {primary_values}: {perspective_value_alignment}.")
+            # print(f"Primary value alignment for {primary_values}: {perspective_value_alignment}.")
 
         # todo: confirm this
         mean_primary_value_alignment = np.mean(primary_value_alignments)
-        print(colored(f"Mean primary value alignment (over all): {mean_primary_value_alignment}", "green"))
+        print(colored(f"Mean primary value alignment (over all): {round(mean_primary_value_alignment, 3)}", "green"))
 
     # mean over value dimensions
     mean_variance = variances.mean()
 
-    print(f"Mean (over values) Variance (over baselines): {mean_variance}")
+    # print(f"Mean (over values) Variance (over baselines): {mean_variance}")
 
     if args.horizontal_bar:
 
@@ -567,3 +608,4 @@ if __name__ == '__main__':
 
     else:
         plt.show()
+

@@ -60,17 +60,17 @@ exp3 = pvq_3 + hof_3 + big5_3 + big5_100_3
 # pvq = 2* 4 * 5320  # 2nd system
 pvq_4 = 2*4*5760*0
 hof_4 = 2*6*2200*0
-big5_4 = 2*5*3500*0  # 50 items
+big5_4 = 2*5*3500*1  # 50 items
 big5_100_4 = 2*5*7083*0  # 100 items
 exp4 = pvq_4 + hof_4 + big5_4 + big5_100_4
 
 
-n_permutations = 5
+n_permutations = 50
 print("n_permutations:", n_permutations)
 
 total_persp_x_tokens = sum([exp1, exp2, exp3, exp4])
 
-total_persp_x_tokens = exp3
+total_persp_x_tokens = exp3 + exp4
 
 total_tokens = n_permutations * total_persp_x_tokens
 

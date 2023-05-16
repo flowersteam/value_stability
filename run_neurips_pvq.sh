@@ -92,40 +92,40 @@
 #
 #done
 
-# Hobbies
-#################
-hobbies_list=(
-  "singing in a church choir"
-  "gambling"
-  "playing chess"
-  "volunteering at a homeless shelter"
-  "car racing"
-)
-
-message="System"
-person="2nd"
-PERMUTATIONS=1
-ENGINE="gpt-4-0314"
-
-for hobby in "${hobbies_list[@]}"; do
-
-SAVE_DIR="results_neurips/results_AI_music_expert_pvq_test_"$ENGINE"_perm_"$PERMUTATIONS"_"$message"_msg_"$person"_prs"
-
-python evaluate.py \
---permutations $PERMUTATIONS \
---save_dir $SAVE_DIR \
---engine "$ENGINE" \
---data_dir data_pvq \
---experiment_name pvq_test \
---separator \
---ntrain 0 \
---verbose \
---estimate-gpt-tokens \
-$(if [ "$message" == "System" ]; then echo "--system-message"; fi) \
-$(if [ "$person" == "2nd" ]; then echo "--direct-perspective"; fi) \
---hobby  "$hobby"
-
-done
+## Hobbies
+##################
+#hobbies_list=(
+#  "singing in a church choir"
+#  "gambling"
+#  "playing chess"
+#  "volunteering at a homeless shelter"
+#  "car racing"
+#)
+#
+#message="System"
+#person="2nd"
+#PERMUTATIONS=1
+#ENGINE="gpt-4-0314"
+#
+#for hobby in "${hobbies_list[@]}"; do
+#
+#SAVE_DIR="results_neurips/results_hobbies_pvq_test_"$ENGINE"_perm_"$PERMUTATIONS"_"$message"_msg_"$person"_prs"
+#
+#python evaluate.py \
+#--permutations $PERMUTATIONS \
+#--save_dir $SAVE_DIR \
+#--engine "$ENGINE" \
+#--data_dir data_pvq \
+#--experiment_name pvq_test \
+#--separator \
+#--ntrain 0 \
+#--verbose \
+#--estimate-gpt-tokens \
+#$(if [ "$message" == "System" ]; then echo "--system-message"; fi) \
+#$(if [ "$person" == "2nd" ]; then echo "--direct-perspective"; fi) \
+#--hobby  "$hobby"
+#
+#done
 
 ####################################
 ### 3. System/User 2ne/3rd person
@@ -142,58 +142,58 @@ done
 # StableVicuna (50)  & n/a & n/a & 0.328 & 0.168
 # StableLM (50) & -0.029 & -0.009 & 0.029 & -0.001
 
-## System message , 2nd person
-#pvq_values_list=(
-#  "Hedonism,Stimulation,Self-Direction"
-#  "Universalism,Benevolence"
-#  "Conformity,Tradition,Security"
-#  "Power,Achievement"
-#)
-#
-#message_options=(
-#  "System"
+# System message , 2nd person
+pvq_values_list=(
+  "Hedonism,Stimulation,Self-Direction"
+  "Universalism,Benevolence"
+  "Conformity,Tradition,Security"
+  "Power,Achievement"
+)
+
+message_options=(
+  "System"
 #  "User"
-#)
-#
-#person_options=(
-#  "2nd"
+)
+
+person_options=(
+  "2nd"
 #  "3rd"
-#)
-#
-##ENGINE="gpt-4-0314"
+)
+
+ENGINE="gpt-4-0314"
 #ENGINE="gpt-3.5-turbo-0301"
-##ENGINE="openassistant_rlhf2_llama30b"
-##ENGINE="dummy"
-#
-#PERMUTATIONS=50
-#
-#for message in "${message_options[@]}"; do
-#for person in "${person_options[@]}"; do
-#for vals in "${pvq_values_list[@]}"; do
-#
-#SAVE_DIR="results_neurips/results_nat_lang_prof_pvq_test_"$ENGINE"_perm_"$PERMUTATIONS"_"$message"_msg_"$person"_prs"
-#mkdir -p $SAVE_DIR
-#
-#python -u evaluate.py \
-#--permutations $PERMUTATIONS \
-#--save_dir $SAVE_DIR \
-#--engine "$ENGINE" \
-#--data_dir data_pvq \
-#--experiment_name pvq_test \
-#--separator \
-#--ntrain 0 \
-#$(if [ "$message" == "System" ]; then echo "--system-message"; fi) \
-#$(if [ "$person" == "2nd" ]; then echo "--direct-perspective"; fi) \
-#--profile "Primary values:$vals" \
-#--natural-language-profile \
-#--natural-language-profile-detail "no" \
-#--perspective-amount "extreme" \
-#--add-high-level-categories \
-#--verbose  2>&1 | tee -a $SAVE_DIR/log.txt
-#
-#done
-#done
-#done
+#ENGINE="openassistant_rlhf2_llama30b"
+#ENGINE="dummy"
+
+PERMUTATIONS=1
+
+for message in "${message_options[@]}"; do
+for person in "${person_options[@]}"; do
+for vals in "${pvq_values_list[@]}"; do
+
+SAVE_DIR="results_neurips/results_nat_lang_prof_pvq_test_"$ENGINE"_perm_"$PERMUTATIONS"_"$message"_msg_"$person"_prs"
+mkdir -p $SAVE_DIR
+
+python -u evaluate.py \
+--permutations $PERMUTATIONS \
+--save_dir $SAVE_DIR \
+--engine "$ENGINE" \
+--data_dir data_pvq \
+--experiment_name pvq_test \
+--separator \
+--ntrain 0 \
+$(if [ "$message" == "System" ]; then echo "--system-message"; fi) \
+$(if [ "$person" == "2nd" ]; then echo "--direct-perspective"; fi) \
+--profile "Primary values:$vals" \
+--natural-language-profile \
+--natural-language-profile-detail "no" \
+--perspective-amount "extreme" \
+--add-high-level-categories \
+--verbose  2>&1 | tee -a $SAVE_DIR/log.txt
+
+done
+done
+done
 
 
 #####################
