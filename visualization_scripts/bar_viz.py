@@ -451,7 +451,6 @@ if __name__ == '__main__':
 
     mean_primary_value_alignment = None
     spearman = False
-    compare_scores = False
 
     # fig, ax = plt.subplots(figsize=(15, 6))
     # fig, ax = plt.subplots(figsize=(13, 10))
@@ -842,7 +841,6 @@ if __name__ == '__main__':
     orders_kv = {}
     for i, directory in enumerate(directories):
 
-        # from IPython import embed; embed();
         if not os.path.isdir(directory):
             continue
 
@@ -883,38 +881,17 @@ if __name__ == '__main__':
 
         print(f"{lab_1} vs {lab_2}")
         for key in keys:
-            # perm -> score
-            perm_i_score_1 = {i: d[test_set_name][key] for i, d in list(enumerate(dir_2_data[dir_1]["per_permutation_metrics"]))}
-            perm_i_score_2 = {i: d[test_set_name][key] for i, d in list(enumerate(dir_2_data[dir_2]["per_permutation_metrics"]))}
 
-            # save permutation orderings
-            # trait/value -> dict -> perm index in order of score
-            perm_orders[key][dir_1] = [k for k, v in sorted(perm_i_score_1.items(), key=lambda item: item[1])]
-            perm_orders[key][dir_2] = [k for k, v in sorted(perm_i_score_2.items(), key=lambda item: item[1])]
-
-            if compare_scores:
-                # perms scores in order of scores
-                values1 = [perm_i_score_1[k] for k in perm_orders[key][dir_1]]
-                assert is_strictly_increasing(values1)  # scores are increasing here
-
-                # same order of permutations with other scores
-                values2 = [perm_i_score_2[k] for k in perm_orders[key][dir_1]]
-
-            else:
-                # compare ranks
-                mapping = {v: i for (i, v) in enumerate(perm_orders[key][dir_1])}
-                values1 = [mapping[v] for v in perm_orders[key][dir_1]]
-                values2 = [mapping[v] for v in perm_orders[key][dir_2]]
-                assert values1 == list(range(len(values1)))
+            scores_1 = [d[test_set_name][key] for d in dir_2_data[dir_1]["per_permutation_metrics"]]
+            scores_2 = [d[test_set_name][key] for d in dir_2_data[dir_2]["per_permutation_metrics"]]
 
 
             if spearman:
-                correlation, _ = spearmanr(values1, values2)
+                correlation, _ = spearmanr(scores_1, scores_2)
             else:
-                correlation, _ = pearsonr(values1, values2)
+                correlation, _ = pearsonr(scores_1, scores_2)
 
             if np.isnan(correlation):
-                assert compare_scores
                 # Constant values in one group. Correlation is undefined and artificially set to 0
                 correlation = 0.0
 
@@ -945,35 +922,15 @@ if __name__ == '__main__':
     for perm_1, perm_2 in combinations(range(n_perms), 2):
 
         for key in keys:
-            persp_score_1 = {d: dir_2_data[d]["per_permutation_metrics"][perm_1][test_set_name][key] for d in directories}
-            persp_score_2 = {d: dir_2_data[d]["per_permutation_metrics"][perm_2][test_set_name][key] for d in directories}
-
-            # save key orderings
-            persp_orders[key][perm_1] = [k for k, v in sorted(persp_score_1.items(), key=lambda item: item[1])]
-            persp_orders[key][perm_2] = [k for k, v in sorted(persp_score_2.items(), key=lambda item: item[1])]
-
-
-            if compare_scores:
-                # compare scores
-                values1 = [persp_score_1[k] for k in persp_orders[key][perm_1]]
-                assert is_strictly_increasing(values1)  # scores are increasing here
-
-                # same order of perspectives with other scores
-                values2 = [persp_score_2[k] for k in persp_orders[key][perm_1]]
-
-            else:
-                # compare ranks
-                mapping = {v: i for (i, v) in enumerate(persp_orders[key][perm_1])}
-                values1 = [mapping[v] for v in persp_orders[key][perm_1]]
-                values2 = [mapping[v] for v in persp_orders[key][perm_2]]
+            scores_1 = [dir_2_data[d]["per_permutation_metrics"][perm_1][test_set_name][key] for d in directories]
+            scores_2 = [dir_2_data[d]["per_permutation_metrics"][perm_2][test_set_name][key] for d in directories]
 
             if spearman:
-                correlation, _ = spearmanr(values1, values2)
+                correlation, _ = spearmanr(scores_1, scores_2)
             else:
-                correlation, _ = pearsonr(values1, values2)
+                correlation, _ = pearsonr(scores_1, scores_2)
 
             if np.isnan(correlation):
-                assert compare_scores
                 # Constant values in one group. Correlation is undefined and artificially set to 0
                 correlation = 0.0
 
@@ -1063,29 +1020,14 @@ if __name__ == '__main__':
         correlation_list = []
 
         for p_i in range(50):
-
-            if compare_scores:
-                # compare scores
-                # key (traits/values) scores in order
-                values1 = [persp_scores[p_i][dir1][k] for k in key_orders[p_i][dir1]]
-                assert is_strictly_increasing(values1)
-
-                # same order of keys (traits/values) with other scores
-                values2 = [persp_scores[p_i][dir2][k] for k in key_orders[p_i][dir1]]
-
-            else:
-                # compare ranks
-                mapping = {v: i for (i, v) in enumerate(key_orders[p_i][dir1])}
-                values1 = [mapping[v] for v in key_orders[p_i][dir1]]
-                values2 = [mapping[v] for v in key_orders[p_i][dir2]]
-
+            scores_1 = [persp_scores[p_i][dir1][k] for k in keys]
+            scores_2 = [persp_scores[p_i][dir2][k] for k in keys]
             if spearman:
-                correlation, _ = spearmanr(values1, values2)
+                correlation, _ = spearmanr(scores_1, scores_2)
             else:
-                correlation, _ = pearsonr(values1, values2)
+                correlation, _ = pearsonr(scores_1, scores_2)
 
             if np.isnan(correlation):
-                assert compare_scores
                 # Constant values in one group. Correlation is undefined and artificially set to 0
                 correlation = 0.0
 
@@ -1099,8 +1041,6 @@ if __name__ == '__main__':
         corrs.append(correlation)
 
     print_aggregated_correlation_stats(corrs)
-
-
 
     if args.horizontal_bar:
 
