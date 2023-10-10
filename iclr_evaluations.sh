@@ -15,8 +15,6 @@ python visualization_scripts/bar_viz.py results_iclr/results_big5_test_sim_conv_
 python visualization_scripts/bar_viz.py results_iclr/results_big5_test_format_gpt-3.5-turbo-0301_perm_50_format/* --save --filename big5_formats_gpt35m_50
 python visualization_scripts/bar_viz.py results_iclr/results_AI_wiki_context_v2_no_separator_music_expert_big5_test_gpt-3.5-turbo-0301_perm_50_User_msg_3rd_prs/* --save --filename big5_wiki_gpt35m_50
 
-exit
-
 
 #GPTj
 # PVQ

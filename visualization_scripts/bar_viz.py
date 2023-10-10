@@ -459,9 +459,9 @@ if __name__ == '__main__':
 
 
     ignore = [
-        "religion",
-        "tax",
-        "vacation",
+        # "religion",
+        # "tax",
+        # "vacation",
 
         # "grammar",
         # "poem",
@@ -988,56 +988,54 @@ if __name__ == '__main__':
 
     print_aggregated_correlation_stats(all_corrs)
 
-    print("--------------------------------------------------")
-
-
-    # order of perspectives - avg over permutations first (average scores)
-    print(colored("Pearson Correlation (between perspectives) - values order (average scores)", "green"))
-    corrs = list()
-    key_orders = defaultdict(dict)
-    persp_scores = defaultdict(dict)
-
-    n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
-
-    assert n_perms == 50
-    assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
-
-    for d in directories:
-        for key in keys:
-            persp_scores[d][key] = np.mean([dir_2_data[d]["per_permutation_metrics"][i][test_set_name][key] for i in range(50)])
-
-        # keys in order
-        key_orders[d] = [k for k, v in sorted(persp_scores[d].items(), key=lambda item: item[1])]
-
-    for dir1, dir2 in combinations(directories, 2):
-
-        if compare_scores:
-            # key scores in order
-            values1 = [persp_scores[dir1][k] for k in key_orders[dir1]]
-            assert is_strictly_increasing(values1)
-            # same order of keys (values/traits) with other scores
-            values2 = [persp_scores[dir2][k] for k in key_orders[dir1]]
-
-        else:
-            mapping = {v: i for (i, v) in enumerate(key_orders[dir1])}
-
-            values1 = [mapping[v] for v in key_orders[dir1]]
-            values2 = [mapping[v] for v in key_orders[dir2]]
-
-        if spearman:
-            correlation, _ = spearmanr(values1, values2)
-        else:
-            correlation, _ = pearsonr(values1, values2)
-
-        if np.isnan(correlation):
-            assert compare_scores
-            # Constant values in one group. Correlation is undefined and artificially set to 0
-            correlation = 0.0
-
-        print(f"\t{dir_to_label(dir1)} - {dir_to_label(dir2)} : {correlation}")
-        corrs.append(correlation)
-
-    print_aggregated_correlation_stats(corrs)
+    # print("--------------------------------------------------")
+    # # order of perspectives - avg over permutations first (average scores)
+    # print(colored("Pearson Correlation (between perspectives) - values order (average scores)", "green"))
+    # corrs = list()
+    # key_orders = defaultdict(dict)
+    # persp_scores = defaultdict(dict)
+    #
+    # n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
+    #
+    # assert n_perms == 50
+    # assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
+    #
+    # for d in directories:
+    #     for key in keys:
+    #         persp_scores[d][key] = np.mean([dir_2_data[d]["per_permutation_metrics"][i][test_set_name][key] for i in range(50)])
+    #
+    #     # keys in order
+    #     key_orders[d] = [k for k, v in sorted(persp_scores[d].items(), key=lambda item: item[1])]
+    #
+    # for dir1, dir2 in combinations(directories, 2):
+    #
+    #     if compare_scores:
+    #         # key scores in order
+    #         values1 = [persp_scores[dir1][k] for k in key_orders[dir1]]
+    #         assert is_strictly_increasing(values1)
+    #         # same order of keys (values/traits) with other scores
+    #         values2 = [persp_scores[dir2][k] for k in key_orders[dir1]]
+    #
+    #     else:
+    #         mapping = {v: i for (i, v) in enumerate(key_orders[dir1])}
+    #
+    #         values1 = [mapping[v] for v in key_orders[dir1]]
+    #         values2 = [mapping[v] for v in key_orders[dir2]]
+    #
+    #     if spearman:
+    #         correlation, _ = spearmanr(values1, values2)
+    #     else:
+    #         correlation, _ = pearsonr(values1, values2)
+    #
+    #     if np.isnan(correlation):
+    #         assert compare_scores
+    #         # Constant values in one group. Correlation is undefined and artificially set to 0
+    #         correlation = 0.0
+    #
+    #     print(f"\t{dir_to_label(dir1)} - {dir_to_label(dir2)} : {correlation}")
+    #     corrs.append(correlation)
+    #
+    # print_aggregated_correlation_stats(corrs)
 
 
     print("--------------------------------------------------")
