@@ -45,7 +45,7 @@ nvidia-cusolver-cu11==11.4.0.1
 nvidia-cusparse-cu11==11.7.4.91
 nvidia-nccl-cu11==2.14.3
 nvidia-nvtx-cu11==11.7.91
-openai==0.27.4
+openai==0.27.7
 outcome==1.2.0
 packaging==23.1
 pandas==2.0.0
@@ -86,4 +86,8 @@ wcwidth==0.2.6
 wsproto==1.2.0
 yarl==1.8.2
 zipp==3.15.0
-git+https://github.com/huggingface/transformers@c612628045822f909020f7eb6784c79700813eda
+# matplotlib==3.7.1
+# tiktoken==0.4.0
+# pandas==2.0.1
+# selenium==4.9.1
+# bs4

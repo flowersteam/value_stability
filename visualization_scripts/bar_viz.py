@@ -1,11 +1,77 @@
 import os
 import json
+import warnings
+
 import matplotlib.pyplot as plt
 import re
 import numpy as np
 from termcolor import colored
+import scipy.stats as stats
+import itertools
+from scipy.stats import tukey_hsd, shapiro, mannwhitneyu, kstest, sem
+import scikit_posthocs as sp
+import pandas as pd
+import pingouin as pg
+from itertools import combinations
+from scipy.stats import pearsonr, spearmanr
 
-all_values_ = []
+def is_strictly_increasing(lst):
+    return all(x <= y for x, y in zip(lst, lst[1:]))
+
+
+def dir_to_label(directory):
+
+    if "format_chat_simulate_conv" in directory:
+        label = extract_value(directory, "_simulate_conv_")
+        label = label[:label.find("____")]
+
+    elif "simulate_conv" in directory:
+        label = extract_value(directory, "_simulate_conv_")
+
+    elif "no_profile" in directory:
+        label = extract_value(directory, "_format_")
+
+    elif "profile" in directory:
+        label = extract_profile(directory)
+        label = label.replace("Primary values:", "")
+
+    elif "lotr_character" in directory:
+        label = extract_value(directory, "_lotr_character_")
+    elif "text_type" in directory:
+        label = extract_value(directory, "_text_type_")
+    elif "music_expert" in directory:
+        label = extract_value(directory, "_music_expert_")
+    elif "music_AI_experts" in directory:
+        label = extract_value(directory, "_music_expert_")
+    elif "hobby" in directory:
+        label = extract_value(directory, "_hobby_")
+    else:
+        label = os.path.basename(directory)
+
+    label = label.rstrip("_").lstrip("_")
+    return label
+
+
+def color_for_label(label):
+    label_to_color = {
+        "Democracy": "blue",
+        "Theocracy": "black",
+        # "Communism": "red",
+        "Totalitarianism": "gold",
+        "Anarchy": "brown",
+
+        # "Christianity": "lightyellow",
+        # "Pagan": "gray"
+    }
+
+    for k, v in label_to_color.items():
+        if k in label:
+            return v
+
+    return None
+
+
+# all_values_ = []
 def extract_value(directory, key="_lotr_character_"):
     label = os.path.basename(directory)
     if key in label:
@@ -69,8 +135,81 @@ def extract_by_key(directory, key="Hobbies"):
     else:
         return 'Unknown'
 
+def print_aggregated_correlation_stats(cs):
+    print("Total stats")
+    statistics = {
+        "Mean": np.mean(cs),
+        "Median": np.median(cs),
+        "STD": np.std(cs),
+        "Min": np.min(cs),
+        "Max": np.max(cs),
+        "Perc 25": np.percentile(cs, 25),
+        "Perc 75": np.percentile(cs, 75),
+    }
 
-def plot_baseline(data, ax, directory, offset, keys_to_plot=None, subj=None, bar_width=1.0, min_bar_size=0.1, horizontal_bar=False, value_limit=250):
+    headers = "\t".join(statistics.keys())
+    values = "\t".join(f"{val:.2f}" for val in statistics.values())
+
+    print(f"{headers}")
+    print(f"{values}")
+
+def print_correlation_stats(cs):
+    from scipy.stats import kurtosis, skew
+
+    statistics = {
+        "Mean": np.mean(cs),
+        "Median": np.median(cs),
+        "STD": np.std(cs),
+        "Min": np.min(cs),
+        "Max": np.max(cs),
+        "Perc 25": np.percentile(cs, 25),
+        "Perc 75": np.percentile(cs, 75),
+        "Skew": skew(cs, axis=0, bias=True),
+        "Kurtosis": kurtosis(cs, axis=0, bias=True)
+    }
+
+    headers = "\t".join(statistics.keys())
+    values = "\t".join(f"{val:.2f}" for val in statistics.values())
+
+    print(f"\t{headers}")
+    print(f"\t{values}")
+
+    # print("\tAvg Pearson corr:", np.mean(cs))
+    # print("\tMedian Pearson corr:", np.median(cs))
+    # print()
+    # print("\tSTD Pearson corr:", np.std(cs))
+    # print("\tMin Pearson corr:", np.min(cs))
+    # print("\tMax Pearson corr:", np.max(cs))
+    # print()
+    # print("\tPerc 25 Pearson corr:", np.percentile(cs, 25))
+    # print("\tPerc 75 Pearson corr:", np.percentile(cs, 75))
+    # print()
+    # print("\tSkew:", skew(cs, axis=0, bias=True))
+    # print("\tKurtosis:", kurtosis(cs, axis=0, bias=True))
+
+
+def cohen_d(data_1, data_2):
+    # Compute means
+    mean1 = data_1.mean()
+    mean2 = data_2.mean()
+
+    # Compute sample variances
+    var1 = data_1.var()
+    var2 = data_2.var()
+
+    n1 = len(data_1)
+    n2 = len(data_2)
+
+    # Compute pooled standard deviation
+    s_pooled = np.sqrt(((n1 - 1) * var1 + (n1 - 1) * var2) / (n1 + n2 - 2))
+
+    # Compute Cohen's d
+    d = (mean1 - mean2) / s_pooled
+
+    return d
+
+
+def plot_baseline(data, ax, directory, offset, keys_to_plot=None, subj=None, bar_width=1.0, min_bar_size=0.1, horizontal_bar=False, value_limit=250, all_evaluation_data=None):
 
     if subj:
         draw_metrics = data['metrics'][subj]
@@ -80,6 +219,7 @@ def plot_baseline(data, ax, directory, offset, keys_to_plot=None, subj=None, bar
         subjects = list(data['metrics'].keys())
 
         if len(subjects) == 1:
+            assert len(list(data['metrics'].values())) == 1
             draw_metrics = list(data['metrics'].values())[0]
 
         # only one metric
@@ -159,85 +299,57 @@ def plot_baseline(data, ax, directory, offset, keys_to_plot=None, subj=None, bar
 
     key_indices = {key: i for i, key in enumerate(keys)}
 
-    values = [draw_metrics[key] for key in keys]
+    # values = [draw_metrics[key] for key in keys] # todo: draw_metrics not needed anymore?
 
-    key = None
-    # key = "Favorite music genre"
-    # key = "Political organization of the country of growing up"
-    # key = "Political system of home country"
-    # key = "Type of home society"
-    # key = "Favorite movie character"
-    # key = "hobbies"
+    perm_vals = []
+    for perm_m in data['per_permutation_metrics']:
+        perm_vals.append([perm_m[test_set_name][key] for key in keys])
 
-    # label = extract_by_key(directory, key=key)
-    if "profile" in directory:
-        label = extract_profile(directory)
+    perm_vals = np.array(perm_vals)
 
-    elif "lotr_character" in directory:
-        label = extract_value(directory, "_lotr_character_")
-    elif "music_expert" in directory:
-        label = extract_value(directory, "_music_expert_")
-    elif "music_AI_experts" in directory:
-        label = extract_value(directory, "_music_expert_")
-    elif "hobby" in directory:
-        label = extract_value(directory, "_hobby_")
-    else:
-        label = os.path.basename(directory)
+    if test_set_name == "pvq_male":
+        # centering PVQ
+        # todo: fix because this mean is not perfect (should be mean of all answers)
+        # this is mean of scores - universalism has 5 questions the rest 4
+        perm_vals = perm_vals - np.repeat(perm_vals.mean(1)[:, np.newaxis], 10, axis=1)
 
-    label = label.rstrip("_").lstrip("_")
+    values = perm_vals.mean(0)
+    # errs = perm_vals.std(0)
+
+    errs = sem(perm_vals)
+
+    label = dir_to_label(directory)
+
+    print("---------------------")
+    print(label)
+    keys_vals=dict(zip(keys, values))
+    sorted_keys = [k for k, v in sorted(keys_vals.items(), key=lambda item: item[1], reverse=True)]
+    print("Order:")
+    for k_i, k in enumerate(sorted_keys):
+        print("\t{}. {} - {:.2f}".format(k_i, k, keys_vals[k]))
+    print()
 
     x_values = [key_indices[key] + offset for key in keys]
 
     x_values = [v+bar_width/2 for v in x_values]
 
-
-    def color_for_edge(label):
-        label_to_color = {
-            # "Rome": "darksalmon",
-            # "Spain": "black",
-        }
-
-        for k, v in label_to_color.items():
-            if k in label:
-                return v
-
-        return None
-
-    def color_for_label(label):
-        label_to_color = {
-            "Democracy": "blue",
-            "Theocracy": "black",
-            # "Communism": "red",
-            "Totalitarianism": "gold",
-            "Anarchy": "brown",
-
-            # "Christianity": "lightyellow",
-            # "Pagan": "gray"
-        }
-
-        for k, v in label_to_color.items():
-            if k in label:
-                return v
-
-        return None
-
     # create dummy bars if 0
     v_to_add = []
     x_to_add = []
-
-    all_values_.append(values)
 
     for ind, v in enumerate(values):
         if abs(v) < bar_width/2:
             v_to_add.extend([min_bar_size, -min_bar_size])
             x_to_add.extend([x_values[ind], x_values[ind]])
 
-    values = values + v_to_add
-    x_values = x_values + x_to_add
+    if v_to_add:
+        values = np.array(list(values) + v_to_add)
+        x_values = np.array(list(x_values) + x_to_add)
+        errs = np.array(list(errs) + [0.0]*len(x_to_add))
 
     if horizontal_bar:
         # draw a horizontal bar
-        ax.barh(x_values, values, label=label, height=bar_width, color=color_for_label(label))
+        ax.barh(x_values, values, xerr=errs, label=label, height=bar_width, color=color_for_label(label))
 
     else:
         if figure_draw:
@@ -257,27 +369,28 @@ def plot_baseline(data, ax, directory, offset, keys_to_plot=None, subj=None, bar
             }
 
             for i, (value, label, key) in enumerate(zip(values, labels, keys)):
-                print(key)
                 plt.bar(x_values[i], value, label=label, width=bar_width, color=bar_color_dict[key])
 
         else:
-            ax.bar(x_values, values, label=label, width=bar_width, color=color_for_label(label))
-            #, facecolor=color_for_label(label), edgecolor=color_for_edge(label), linewidth=2)
+            assert len(errs) == len(values)
+            ax.bar(x_values, values, yerr=errs, label=label, width=bar_width, color=color_for_label(label))
 
     if args.horizontal_bar:
         assert all([-value_limit <= v <= value_limit for v in values])
         ax.set_xlim([-value_limit, value_limit])
 
-        ax.set_ylabel('Values', fontsize=15)
+        # ax.set_ylabel('Values', fontsize=15)
         ax.set_xlabel('Scores', fontsize=15)
 
     else:
         # set y-axis limits
         if test_set_name == "pvq_male":
-            ax.set_ylim([0, 6.1])
+            # ax.set_ylim([-3, 3]) # append
+            ax.set_ylim([-2.9, 2.9])
 
         elif test_set_name == "hofstede":
-            ax.set_ylim([-350, 350])
+            # ax.set_ylim([-350, 350]) # append
+            ax.set_ylim([-130, 230])
 
         elif test_set_name == "big5_50":
             ax.set_ylim([0, 55])
@@ -288,24 +401,33 @@ def plot_baseline(data, ax, directory, offset, keys_to_plot=None, subj=None, bar
         else:
             ax.set_ylim([0, max([6, *values])+0.1])
 
-        ax.set_xlabel('Values', fontsize=15)
-        ax.set_ylabel('Scores', fontsize=15)
+        # ax.set_xlabel('Values', fontsize=30)
+        ax.set_ylabel('Scores', fontsize=30)
 
-    # if "gpt-3.5-turbo-0301" in directory:
-    #     ax.set_title("gpt-3.5-turbo-0301")
-    #
-    # elif "gpt-4-0314" in directory:
-    #     ax.set_title("gpt-4-0314")
 
     if not args.separate_legend:
-        ax.legend(loc="best", fontsize=15)
+        if "lotr" in directories[0]:
+            ax.legend(bbox_to_anchor=(0.5, 1.2), loc="center", fontsize=20, ncols=5)
+        elif "nat_lang_prof" in directories[0]:
+            ax.legend(bbox_to_anchor=(0.5, 1.2), loc="center", fontsize=20, ncols=2)
+        elif "music" in directories[0]:
+            ax.legend(bbox_to_anchor=(0.5, 1.2), loc="center", fontsize=20, ncols=5)
+        elif "hobbies":
+            ax.legend(bbox_to_anchor=(0.5, 1.2), loc="center", fontsize=20, ncols=3)
+        else:
+            ax.legend(loc="best", fontsize=20)
+        # fig.subplots_adjust(left=0.05, right=0.95, top=0.8, bottom=0.35)
+        fig.subplots_adjust(left=0.15, right=0.95, top=0.82, bottom=0.38)
 
-    return keys
+    return keys, sorted_keys, keys_vals
 
 figure_draw = False
 
 if __name__ == '__main__':
     import argparse
+
+    normalized_evaluation_data = []
+    notnorm_evaluation_data = []
 
     parser = argparse.ArgumentParser()
     parser.add_argument('directories', nargs='+', help='directories containing results.json files')
@@ -314,6 +436,8 @@ if __name__ == '__main__':
     parser.add_argument('--filename', type=str, default="hobbies_pvq")
     parser.add_argument('--horizontal-bar', '-hb', action="store_true")
     args = parser.parse_args()
+
+    different_distr = [] # value/traits where the anova test said it's different
 
     keys_to_plot = None
     # keys_to_plot = ['Conformity', 'Tradition', 'Benevolence', 'Universalism', 'Self-Direction', 'Stimulation', 'Hedonism', 'Achievement', 'Power', 'Security']
@@ -326,10 +450,28 @@ if __name__ == '__main__':
         bar_width = 0.9
 
     mean_primary_value_alignment = None
+    spearman = False
+    compare_scores = False
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    # fig, ax = plt.subplots(figsize=(15, 6))
+    # fig, ax = plt.subplots(figsize=(13, 10))
+    fig, ax = plt.subplots(figsize=(15, 10))
 
-    all_bars_width = len(args.directories) * (bar_width*bar_margin)  # bars with margins
+
+    ignore = [
+        "religion",
+        "tax",
+        "vacation",
+
+        # "grammar",
+        # "poem",
+        # "joke",
+        # "history",
+        # "chess",
+    ]
+    args.directories = [d for d in args.directories if not any([i in d for i in ignore])]
+    num_dirs = len([d for d in args.directories if os.path.isdir(d)])
+    all_bars_width = num_dirs * (bar_width*bar_margin)  # bars with margins
 
     keys = None
 
@@ -377,35 +519,19 @@ if __name__ == '__main__':
     else:
         test_set_name = "pvq_male"
 
-    current_max_y = 0
 
     dir_2_data = {}
-
     for i, directory in enumerate(directories):
         if not os.path.isdir(directory):
             continue
-
         results_json_path = os.path.join(directory, 'results.json')
         if not os.path.isfile(results_json_path):
             continue
 
         with open(results_json_path, 'r') as f:
             data = json.load(f)
-
-        offset = -all_bars_width/2 + (i/len(args.directories))*all_bars_width
-        keys_ = plot_baseline(data, ax, directory, offset, keys_to_plot=keys_to_plot, bar_width=bar_width, min_bar_size=0.05, horizontal_bar=args.horizontal_bar)
-
         dir_2_data[directory] = data
 
-        # check that keys are the same in all the baselines
-        assert keys is None or keys_ == keys
-        keys = keys_
-
-    # variance over baselines per value
-    variances_ = np.stack([list(d["metrics"][test_set_name].values()) for d in dir_2_data.values()]).var(axis=0)  # todo: remove variances_
-
-    variances = np.array(all_values_).var(axis=0)
-    assert all(variances_ == variances)
 
     if test_set_name == "pvq_male":
         test_set_values = [
@@ -423,11 +549,11 @@ if __name__ == '__main__':
     elif test_set_name == "hofstede":
         test_set_values = [
             "Power Distance",
+            "Individualism",
             "Masculinity",
             "Uncertainty Avoidance",
             "Long-Term Orientation",
             "Indulgence",
-            "Individualism"
         ]
     elif test_set_name in ["big5_50", "big5_100"]:
         test_set_values = [
@@ -439,39 +565,37 @@ if __name__ == '__main__':
         ]
 
     primary_value_alignments = []
-    if all(["Primary Values".lower() in d.lower() for d in directories]):
-        for dir, data in dir_2_data.items():
+    mean_vars = []
+    labels = []
+    if all(["Primary Values".lower() in d.lower() for d in directories]) or True:
+        for dir_i, (dir, data) in enumerate(dir_2_data.items()):
 
+            labels.append(dir_to_label(dir))
 
-            profile = {}
-            # extract values from profile string
-            if "params" in data:
-                profile_str = data['params']['profile']
+            normalized_evaluation_data.append([])
+            notnorm_evaluation_data.append([])
+
+            if all(["Primary Values".lower() in d.lower() for d in directories]):
+                profile = {}
+                # extract values from profile string
+                if "params" in data:
+                    profile_str = data['params']['profile']
+                else:
+                    profile_str = dir[dir.rindex("profile"):dir.index("_2023")]
+
+                for item in profile_str.split(';'):
+                    key, value = item.split(':')
+                    profile[key] = value
+
+                primary_values = profile["Primary values"].split(",")
+
+                if "Primary values" not in profile:
+                    raise ValueError(f"Primary values are not in the profile: {profile}.")
+
+                assert all([prim_v in test_set_values for prim_v in primary_values])
             else:
-                profile_str = dir[dir.rindex("profile"):dir.index("_2023")]
+                primary_values = None
 
-            for item in profile_str.split(';'):
-                key, value = item.split(':')
-                profile[key] = value
-
-            primary_values = profile["Primary values"].split(",")
-
-            # map_prim_values = {
-            #     "long term orientation": "long_term_orientation",
-            #     "power distance": 'power_distance',
-            #     "uncertainty avoidance": "uncertainty_avoidance",
-            # }
-            # primary_values = [map_prim_values.get(p, p) for p in primary_values]
-
-            if "Primary values" not in profile:
-                raise ValueError(f"Primary values are not in the profile: {profile}.")
-
-            assert all([prim_v in test_set_values for prim_v in primary_values])
-
-            # compute the metrics avg_{prim_values} - avg_{other_values}
-            # avg_primary_values = np.mean([data['metrics'][test_set_name][val] for val in primary_values])
-            # avg_other_values = np.mean([data['metrics'][test_set_name][val] for val in list(set(test_set_values) - set(primary_values))])
-            # primary_value_alignment = avg_primary_values - avg_other_values
             from collections import defaultdict
             normalizing_constants = {
                     "pvq_male": defaultdict(lambda: 5),
@@ -489,23 +613,22 @@ if __name__ == '__main__':
             normalizing_offset = {
                 "pvq_male": defaultdict(lambda: -1),
                 "hofstede": {
-                    "Power Distance": 0,
-                    "Individualism": 0,
-                    "Masculinity": 0,
-                    "Uncertainty Avoidance": 0,
-                    "Long-Term Orientation": 0,
-                    "Indulgence": 0,
+                    "Power Distance": 300,
+                    "Individualism": 350,
+                    "Masculinity": 350,
+                    "Uncertainty Avoidance": 325,
+                    "Long-Term Orientation": 325,
+                    "Indulgence": 375,
                 },
                 "big5_50": defaultdict(lambda: 0),
             }
 
-            # print("No normalization")
-            # normalizing_constants = defaultdict(lambda :defaultdict(lambda:1))
-            # normalizing_offset = defaultdict(lambda :defaultdict(lambda:0))
+            per_value_norm_scores = defaultdict(list)
 
-            for perm_metrics in data["per_permutation_metrics"]:
+            for perm_i, perm_metrics in enumerate(data["per_permutation_metrics"]):
 
                 # we normalize by (x+normalizing_offset)/normalizing_constant
+                notnorm_perm_metrics = {val: perm_metrics[test_set_name][val] for val in test_set_values}
 
                 norm_perm_metrics = {
                     val: (
@@ -513,24 +636,473 @@ if __name__ == '__main__':
                     )/normalizing_constants[test_set_name][val] for val in test_set_values
                 }
 
-                avg_primary_values = np.mean([norm_perm_metrics[val] for val in primary_values])
-                avg_other_values = np.mean(
-                    [norm_perm_metrics[val] for val in list(set(test_set_values) - set(primary_values))])
-                perm_alignment = avg_primary_values - avg_other_values
-                # print("permutation alignment: ", perm_alignment)
-                primary_value_alignments.append(perm_alignment)
+                for val, score in norm_perm_metrics.items():
+                    per_value_norm_scores[val].append(score)
 
-            perspective_value_alignment = np.mean(primary_value_alignments[-len(data["per_permutation_metrics"]):])
-            # print(f"Primary value alignment for {primary_values}: {perspective_value_alignment}.")
+                if primary_values:
+                    avg_primary_values = np.mean([norm_perm_metrics[val] for val in primary_values])
+                    avg_other_values = np.mean(
+                        [norm_perm_metrics[val] for val in list(set(test_set_values) - set(primary_values))])
+                    perm_alignment = avg_primary_values - avg_other_values
+                    # print("permutation alignment: ", perm_alignment)
+                    primary_value_alignments.append(perm_alignment)
 
-        # todo: confirm this
-        mean_primary_value_alignment = np.mean(primary_value_alignments)
-        print(colored(f"Mean primary value alignment (over all): {round(mean_primary_value_alignment, 3)}", "green"))
+                normalized_evaluation_data[dir_i].append([norm_perm_metrics[v] for v in test_set_values])
+                notnorm_evaluation_data[dir_i].append([notnorm_perm_metrics[v] for v in test_set_values])
+
+
+            # mean (over values/traits) of vars (over permutations)
+            mean_vars.append(np.mean([np.var(norm_scores) for norm_scores in per_value_norm_scores.values()]))
+
+            if primary_values:
+                perspective_value_alignment = np.mean(primary_value_alignments[-len(data["per_permutation_metrics"]):])
+
+                # dump alignemens to json
+
+                dump_json_path = dir + "/alignments.json"
+                with open(dump_json_path, 'w') as f:
+                    json.dump(primary_value_alignments[-len(data["per_permutation_metrics"]):], f)
+
+                # print(f"Primary value alignment for {primary_values}: {perspective_value_alignment}.")
+
+        if primary_values:
+            # todo: confirm this
+            mean_primary_value_alignment = np.mean(primary_value_alignments)
+            print(colored(f"Mean primary value alignment (over all): {round(mean_primary_value_alignment, 3)}", "green"))
+
+        # mean over perspectives
+        mean_var = np.mean(mean_vars)
+
+    # all_evaluation_data = (n_persp, n_perm, n_values/traits)
+    normalized_evaluation_data = np.array(normalized_evaluation_data)
+    notnorm_evaluation_data = np.array(notnorm_evaluation_data)
 
     # mean over value dimensions
-    mean_variance = variances.mean()
+    # mean_variance = variances.mean()
 
-    # print(f"Mean (over values) Variance (over baselines): {mean_variance}")
+    # print(f"Mean (over values) Variance (over perspectives): {mean_variance}")
+    perm_var = normalized_evaluation_data.var(1).mean()
+    # var(permut) -> mean (persp, values)
+    assert np.isclose(perm_var, mean_var)
+    print(f"Permutation Var - mean (over values/traits x perspectives) of var (over perm) (*10^3): {round(perm_var * (10 ** 3), 2)}")
+
+    persp_var = normalized_evaluation_data.mean(1).var(0).mean()
+    # mean(permut) -> var (persp) -> mean (values)
+    print(f"Perspective Var - mean (over values/traits) of var (over perspectives) of mean (over perm) (*10^3): {round(persp_var * (10 ** 3), 2)}")
+
+    # all_evaluation_data = (n_perspectives, n_permutations, n_values/traits)
+    # we do a separate anova for each value/trait
+    assert normalized_evaluation_data.shape[-1] == len(test_set_values)
+
+    # p limit for the group null-hyp - all perspectivea are the same distribution
+
+    p_limit = 0.05
+    # p_limit = 0.005
+    # p_limit = 0.001
+
+    # group_p_limit = 0.001
+    group_p_limit = p_limit / len(test_set_values)  # additional bonferroni correction
+
+    print("testing p-value: ", group_p_limit)
+
+    if test_set_name == "pvq_male":
+        # PVQ centering - is this reccomented in this manual? # todo: do properly all questions
+        notnorm_evaluation_data = notnorm_evaluation_data - np.repeat(notnorm_evaluation_data.mean(2)[:,:, np.newaxis], 10, axis=2)
+
+    for val_i, val in enumerate(test_set_values):
+        # value_data = normalized_evaluation_data[:, :, val_i] # value_data = (n_perspectives, n_permutations)
+        value_data = notnorm_evaluation_data[:, :, val_i] # value_data = (n_perspectives, n_permutations)
+
+        print(f"\n----------------{val}---------------------")
+
+        assume_assumptions=True
+
+        if assume_assumptions:
+            # it's usually ok to violate assumptions
+            levene_ok = True
+            gaussian = True
+
+        else:
+            # for assumptions
+            alpha = 0.001
+
+            # LEVENE test for equal variance (assumption for anova and tukey)
+            levene_test_stat, levene_p_value = stats.levene(*value_data)
+            if levene_p_value < alpha:  # or whatever alpha level you choose
+                levene_ok = False
+                print(f"Levene not OK (p={levene_p_value}) - not same variances")
+
+            else:
+                levene_ok = True
+                print(f"Levene OK (p={levene_p_value}) - same variances")
+
+            # Shapiro - normality
+            gaussian = []
+            ps = []
+            for v_d in value_data:
+                _, p = shapiro(v_d)
+                ps.append(p)
+
+                if p < alpha:
+                    gaussian.append(False)
+                else:
+                    gaussian.append(True)
+
+                # plt.hist(v_d)
+                # plt.title(f"p = {p} - {'' if gaussian[-1] else 'not'} gaussian")
+                # plt.show()
+
+            gaussian = all(gaussian)
+            # print(f"Gaussian (p={ps}): {gaussian}")
+            print(f"Gaussian (Shapiro) (p={np.round(ps, 5)}): {gaussian}")
+
+        if gaussian:
+            if levene_ok:
+                # standard ANOVA
+                testname = "ANOVA"
+                _, pvalue = stats.f_oneway(*value_data)
+            else:
+                # Welch ANOVA
+                test_name = "Welch ANOVA"
+                df = pd.DataFrame({'score': np.array(value_data).flatten(),
+                                   'group': np.repeat(labels, repeats=50)})
+
+                p_value = pg.welch_anova(dv='score', between='group', data=df)["p-unc"].values
+                assert len(p_value) == 1
+                p_value = p_value[0]
+
+        else:
+            # kruskal
+            testname = "Krushal-Wallis (H-test)"
+            _, pvalue = stats.kruskal(*value_data)
+
+
+        if pvalue >= group_p_limit:
+            different_distr.append(False)
+            print(colored(f"p({testname}): {pvalue} > {group_p_limit}", "red"))
+        else:
+            different_distr.append(True)
+            print(colored(f"p({testname}): {pvalue} < {group_p_limit}", "green"))
+
+            pairs_ind = list(itertools.combinations(range(len(value_data)), 2))
+
+            if gaussian and levene_ok:
+                # Tukey
+                tukey_res=tukey_hsd(*value_data)
+
+                # print("\tTukey (p limit) :", p_limit)
+                print("\tTukey (p limit) :", group_p_limit)
+                for pair_ind in pairs_ind:
+
+                    res_pvalue = tukey_res.pvalue[pair_ind[0], pair_ind[1]]
+
+                    if res_pvalue < p_limit:
+                        d = cohen_d(value_data[pair_ind[0]], value_data[pair_ind[1]])
+                        print("\t{} - {} : p -> {:.8f} d -> {:.8f}".format(labels[pair_ind[0]], labels[pair_ind[1]], res_pvalue, d))
+
+            else:
+                # Dunn
+                dunn_res = sp.posthoc_dunn(value_data, p_adjust='bonferroni')
+                for pair_ind in pairs_ind:
+                    res_pvalue = dunn_res.iloc[pair_ind[0], pair_ind[1]]
+                    if res_pvalue < p_limit:
+                        print("\t{} - {} : {}".format(labels[pair_ind[0]], labels[pair_ind[1]], res_pvalue))
+
+
+            # # bonferroni correction
+            # n_comparisons = len(pairs_ind)
+            # bonf_p_limit = p_limit / len(pairs_ind)
+            #
+            # print(f"\tBonferroni corrected p : {p_limit} -> {bonf_p_limit}")
+            # print(f"\t{'t-test' if gaussian else 'u-test'} p < {bonf_p_limit} for: ")
+            #
+            # for pair_ind in pairs_ind:
+            #     if gaussian:
+            #         # welch or standard t-test (welch - leven_ok - equal_var:True)
+            #         res_pvalue = stats.ttest_ind(a=value_data[pair_ind[0]], b=value_data[pair_ind[1]], equal_var=levene_ok).pvalue
+            #     else:
+            #         from IPython import embed; embed();
+            #
+            #         # Mann-Whitney U
+            #         res_pvalue = stats.mannwhitneyu(x=value_data[pair_ind[0]], y=value_data[pair_ind[1]]).pvalue
+            #
+            #     pair_labels = (labels[pair_ind[0]], labels[pair_ind[1]])
+            #     if res_pvalue < bonf_p_limit:
+            #         print("\t{} -> {} < {}".format(pair_labels, res_pvalue, bonf_p_limit))
+
+
+    # plot bars
+    for distr_i, different in enumerate(different_distr):
+        if not different:
+            # anova didn't reject - same distr
+            plt.bar(distr_i, 300, width=all_bars_width*1.3, color="lightgray")
+            plt.bar(distr_i, -300, width=all_bars_width*1.3, color="lightgray")
+
+    orders = {}
+    orders_kv = {}
+    for i, directory in enumerate(directories):
+
+        # from IPython import embed; embed();
+        if not os.path.isdir(directory):
+            continue
+
+        results_json_path = os.path.join(directory, 'results.json')
+        if not os.path.isfile(results_json_path):
+            continue
+
+        with open(results_json_path, 'r') as f:
+            data = json.load(f)
+
+
+        offset = -all_bars_width/2 + (i/num_dirs)*all_bars_width
+        keys_, sorted_keys, keys_vals = plot_baseline(data, ax, directory, offset, keys_to_plot=keys_to_plot, bar_width=bar_width, min_bar_size=0.05, horizontal_bar=args.horizontal_bar, all_evaluation_data=normalized_evaluation_data)
+        orders[dir_to_label(directory)] = sorted_keys
+        orders_kv[dir_to_label(directory)] = keys_vals
+        assert keys_ == test_set_values
+
+        # check that keys are the same in all the baselines
+        assert keys is None or keys_ == keys
+        keys = keys_
+
+
+    print()
+
+    ########################
+    # CORRELATIONS
+    ########################
+
+    print(colored("Pearson Correlation (between perspectives) - permutation order", "green"))
+    corrs = defaultdict(list)
+
+    perm_orders = defaultdict(dict)
+
+    for dir_1, dir_2 in combinations(directories, 2):
+
+        lab_1 = dir_to_label(dir_1)
+        lab_2 = dir_to_label(dir_2)
+
+        print(f"{lab_1} vs {lab_2}")
+        for key in keys:
+            # perm -> score
+            perm_i_score_1 = {i: d[test_set_name][key] for i, d in list(enumerate(dir_2_data[dir_1]["per_permutation_metrics"]))}
+            perm_i_score_2 = {i: d[test_set_name][key] for i, d in list(enumerate(dir_2_data[dir_2]["per_permutation_metrics"]))}
+
+            # save permutation orderings
+            # trait/value -> dict -> perm index in order of score
+            perm_orders[key][dir_1] = [k for k, v in sorted(perm_i_score_1.items(), key=lambda item: item[1])]
+            perm_orders[key][dir_2] = [k for k, v in sorted(perm_i_score_2.items(), key=lambda item: item[1])]
+
+            if compare_scores:
+                # perms scores in order of scores
+                values1 = [perm_i_score_1[k] for k in perm_orders[key][dir_1]]
+                assert is_strictly_increasing(values1)  # scores are increasing here
+
+                # same order of permutations with other scores
+                values2 = [perm_i_score_2[k] for k in perm_orders[key][dir_1]]
+
+            else:
+                # compare ranks
+                mapping = {v: i for (i, v) in enumerate(perm_orders[key][dir_1])}
+                values1 = [mapping[v] for v in perm_orders[key][dir_1]]
+                values2 = [mapping[v] for v in perm_orders[key][dir_2]]
+                assert values1 == list(range(len(values1)))
+
+
+            if spearman:
+                correlation, _ = spearmanr(values1, values2)
+            else:
+                correlation, _ = pearsonr(values1, values2)
+
+            if np.isnan(correlation):
+                assert compare_scores
+                # Constant values in one group. Correlation is undefined and artificially set to 0
+                correlation = 0.0
+
+            corrs[key].append(correlation)
+
+            print(f"\t{key} : {correlation}")
+
+    for key in keys:
+        print(f"{key}:")
+        print("\tAvg Pearson corr:", np.mean(corrs[key]))
+        print("\tMin Pearson corr:", np.min(corrs[key]))
+
+    all_corrs = list(itertools.chain(*corrs.values()))
+    print_aggregated_correlation_stats(all_corrs)
+
+    print("--------------------------------------------------")
+
+    # order of perspectives
+    print(colored("Pearson Correlation (between permutations) - perspective order", "green"))
+    corrs = defaultdict(list)
+    persp_orders = defaultdict(dict)
+
+    n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
+
+    assert n_perms == 50
+    assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
+
+    for perm_1, perm_2 in combinations(range(n_perms), 2):
+
+        for key in keys:
+            persp_score_1 = {d: dir_2_data[d]["per_permutation_metrics"][perm_1][test_set_name][key] for d in directories}
+            persp_score_2 = {d: dir_2_data[d]["per_permutation_metrics"][perm_2][test_set_name][key] for d in directories}
+
+            # save key orderings
+            persp_orders[key][perm_1] = [k for k, v in sorted(persp_score_1.items(), key=lambda item: item[1])]
+            persp_orders[key][perm_2] = [k for k, v in sorted(persp_score_2.items(), key=lambda item: item[1])]
+
+
+            if compare_scores:
+                # compare scores
+                values1 = [persp_score_1[k] for k in persp_orders[key][perm_1]]
+                assert is_strictly_increasing(values1)  # scores are increasing here
+
+                # same order of perspectives with other scores
+                values2 = [persp_score_2[k] for k in persp_orders[key][perm_1]]
+
+            else:
+                # compare ranks
+                mapping = {v: i for (i, v) in enumerate(persp_orders[key][perm_1])}
+                values1 = [mapping[v] for v in persp_orders[key][perm_1]]
+                values2 = [mapping[v] for v in persp_orders[key][perm_2]]
+
+            if spearman:
+                correlation, _ = spearmanr(values1, values2)
+            else:
+                correlation, _ = pearsonr(values1, values2)
+
+            if np.isnan(correlation):
+                assert compare_scores
+                # Constant values in one group. Correlation is undefined and artificially set to 0
+                correlation = 0.0
+
+            corrs[key].append(correlation)
+
+    for key in keys:
+        print(key)
+        print("\tAvg Pearson corr:", np.mean(corrs[key]))
+        print("\tMin Pearson corr:", np.min(corrs[key]))
+
+    all_corrs = list(itertools.chain(*corrs.values()))
+
+    print_aggregated_correlation_stats(all_corrs)
+
+    print("--------------------------------------------------")
+
+
+    # order of perspectives - avg over permutations first (average scores)
+    print(colored("Pearson Correlation (between perspectives) - values order (average scores)", "green"))
+    corrs = list()
+    key_orders = defaultdict(dict)
+    persp_scores = defaultdict(dict)
+
+    n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
+
+    assert n_perms == 50
+    assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
+
+    for d in directories:
+        for key in keys:
+            persp_scores[d][key] = np.mean([dir_2_data[d]["per_permutation_metrics"][i][test_set_name][key] for i in range(50)])
+
+        # keys in order
+        key_orders[d] = [k for k, v in sorted(persp_scores[d].items(), key=lambda item: item[1])]
+
+    for dir1, dir2 in combinations(directories, 2):
+
+        if compare_scores:
+            # key scores in order
+            values1 = [persp_scores[dir1][k] for k in key_orders[dir1]]
+            assert is_strictly_increasing(values1)
+            # same order of keys (values/traits) with other scores
+            values2 = [persp_scores[dir2][k] for k in key_orders[dir1]]
+
+        else:
+            mapping = {v: i for (i, v) in enumerate(key_orders[dir1])}
+
+            values1 = [mapping[v] for v in key_orders[dir1]]
+            values2 = [mapping[v] for v in key_orders[dir2]]
+
+        if spearman:
+            correlation, _ = spearmanr(values1, values2)
+        else:
+            correlation, _ = pearsonr(values1, values2)
+
+        if np.isnan(correlation):
+            assert compare_scores
+            # Constant values in one group. Correlation is undefined and artificially set to 0
+            correlation = 0.0
+
+        print(f"\t{dir_to_label(dir1)} - {dir_to_label(dir2)} : {correlation}")
+        corrs.append(correlation)
+
+    print_aggregated_correlation_stats(corrs)
+
+
+    print("--------------------------------------------------")
+
+    # order of perspectives - avg over permutations last (average r)
+    print(colored("Pearson Correlation (between perspectives) - values order (average r)", "green"))
+    corrs = list()
+    key_orders = defaultdict(dict)
+    persp_scores = defaultdict(lambda : defaultdict(dict))
+
+    n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
+
+    assert n_perms == 50
+    assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
+
+    for p_i in range(50):
+        for d in directories:
+            for key in keys:
+                persp_scores[p_i][d][key] = dir_2_data[d]["per_permutation_metrics"][p_i][test_set_name][key]
+
+            # keys in order
+            key_orders[p_i][d] = [k for k, v in sorted(persp_scores[p_i][d].items(), key=lambda item: item[1])]
+
+    for dir1, dir2 in combinations(directories, 2):
+        correlation_list = []
+
+        for p_i in range(50):
+
+            if compare_scores:
+                # compare scores
+                # key (traits/values) scores in order
+                values1 = [persp_scores[p_i][dir1][k] for k in key_orders[p_i][dir1]]
+                assert is_strictly_increasing(values1)
+
+                # same order of keys (traits/values) with other scores
+                values2 = [persp_scores[p_i][dir2][k] for k in key_orders[p_i][dir1]]
+
+            else:
+                # compare ranks
+                mapping = {v: i for (i, v) in enumerate(key_orders[p_i][dir1])}
+                values1 = [mapping[v] for v in key_orders[p_i][dir1]]
+                values2 = [mapping[v] for v in key_orders[p_i][dir2]]
+
+            if spearman:
+                correlation, _ = spearmanr(values1, values2)
+            else:
+                correlation, _ = pearsonr(values1, values2)
+
+            if np.isnan(correlation):
+                assert compare_scores
+                # Constant values in one group. Correlation is undefined and artificially set to 0
+                correlation = 0.0
+
+            correlation_list.append(correlation)
+
+        correlation = np.mean(correlation_list) # average correlation in value order
+
+        print(f"{dir_to_label(dir1)} - {dir_to_label(dir2)}:")
+        print_correlation_stats(correlation_list)
+
+        corrs.append(correlation)
+
+    print_aggregated_correlation_stats(corrs)
+
+
 
     if args.horizontal_bar:
 
@@ -570,17 +1142,25 @@ if __name__ == '__main__':
 
     else:
         ax.set_xticks(range(len(keys)))
-        ax.set_xticklabels(keys, rotation=45)
+
+        if test_set_name == "pvq_male":
+            ax.set_xticklabels(keys, rotation=90)
+        else:
+            ax.set_xticklabels(keys, rotation=90)
+
+        ax.tick_params(axis='both', which='both', labelsize=30)
+
 
     if figure_draw:
         ax.legend().remove()
         ax.set_title("")
 
     if args.save:
-        for ext in ["png", "svg"]:
+        # for ext in ["png", "svg"]:
+        for ext in ["png"]:
             savepath = f"visualizations/{args.filename}.{ext}"
             print(f"Saved to: {savepath}")
-            plt.tight_layout()
+            # plt.tight_layout()
             plt.savefig(savepath)
 
             if args.separate_legend:

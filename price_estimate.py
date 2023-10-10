@@ -36,23 +36,28 @@
 
 # price per token
 gpt_4 = 0.03/1000
-gpt_35 = 0.002/1000
+gpt_35 = 0.0015/1000
 davinci = 0.02/1000
 
 
 # 1. PVQ: lotr 5 + prim 0  -> 5 ( prim is in 3.)
 # exp1 = 0
-exp1 = 5 * 4640
+exp1 = 5 * 4640 + 4 * 4640
+
+# conversations
+# 230 tokens is the longest conversation
+exp_conv = 5 * (4640 + 40*230)
 
 # 2. PVQ:music 6 +  hobbies: 5 -> 11
 # exp2 = 0
 exp2 = 6 * 4600 + 5 * 4520
 
 # 3. message person: (PVQ: 4 HOF: 6 B5: 5) x 4 settings = 15*4 -> 60
-pvq_3 = 4*4*5040*0
+pvq_3 = 4*4*5040*1
 hof_3 = 4*6*2200*0
-big5_3 = 4*5*3500*0 # 50 items
+big5_3 = 4*5*3500*0  # 50 items
 big5_100_3 = 4*5*7083*0  # 100 items
+
 
 exp3 = pvq_3 + hof_3 + big5_3 + big5_100_3
 
@@ -60,7 +65,7 @@ exp3 = pvq_3 + hof_3 + big5_3 + big5_100_3
 # pvq = 2* 4 * 5320  # 2nd system
 pvq_4 = 2*4*5760*0
 hof_4 = 2*6*2200*0
-big5_4 = 2*5*3500*1  # 50 items
+big5_4 = 2*5*3500*0  # 50 items
 big5_100_4 = 2*5*7083*0  # 100 items
 exp4 = pvq_4 + hof_4 + big5_4 + big5_100_4
 
@@ -70,9 +75,13 @@ print("n_permutations:", n_permutations)
 
 total_persp_x_tokens = sum([exp1, exp2, exp3, exp4])
 
-total_persp_x_tokens = exp3 + exp4
+total_persp_x_tokens = exp1
+# total_persp_x_tokens = exp1 + exp2
+# total_persp_x_tokens = exp1
 
 total_tokens = n_permutations * total_persp_x_tokens
+
+print("total tokens:", total_tokens)
 
 price_gpt4 = gpt_4 * total_tokens
 price_gpt35 = gpt_35 * total_tokens

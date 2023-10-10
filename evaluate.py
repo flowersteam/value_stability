@@ -10,7 +10,34 @@ import tiktoken
 
 import torch
 import sys
-from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
+from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, TextStreamer
+import transformers
+
+import json
+import hashlib
+
+def print_chat_messages(messages):
+    print("*********************")
+    print("Messages:")
+    for msg in messages:
+        print(f"{msg['role'].upper()} : {msg['content']}")
+    print("*********************")
+
+
+def create_simulated_messages(conv, last="user"):
+    # simulate a conversation between two LLMs
+    if last == "user":
+        # last role is user
+        sim_conv = list(zip(["user", "assistant"] * (len(conv) // 2 + 1), conv[::-1]))[::-1]
+    elif last == "assistant":
+        # last role is assistant
+        sim_conv = list(zip(["assistant", "user"] * (len(conv) // 2 + 1), conv[::-1]))[::-1]
+    else:
+        raise ValueError("last must be other user or assistant")
+
+    sim_conv_messages = [{"role": role, "content": msg} for role, msg in sim_conv]
+    return sim_conv_messages
+
 
 def map_choice_to_number(letter, permutations_dict):
     # A-F -> 1-6
@@ -62,7 +89,9 @@ from crop import crop
 from evaluate_political_compass_csv import evaluate_csv_file
 
 openai.api_key = os.environ["OPENAI_API_KEY"]
-print("OPENAI KEY:", openai.api_key)
+hidden_key = openai.api_key[:10] + "*" * 10 + openai.api_key[20:]
+print("OPENAI KEY:", hidden_key)
+
 
 choices = ["A", "B", "C", "D", "E", "F"]
 # choices = ["a", "b", "c", "d", "e", "f"]
@@ -92,6 +121,10 @@ def get_prompt_skeleton(subject, experiment_name, args):
             if args.natural_language_profile:
                 raise NotImplementedError("Natural language profile not implemented.")
 
+        if args.format in ["code_py", "code_cpp", "conf_toml", "latex"]:
+            if not args.no_profile:
+                raise NotImplementedError(f"{args.format} format is only implemented with no_profile.")
+
         if "pvq" in experiment_name:
             assert "pvq" in args.data_dir
             # todo: extract this somewhere to make it more nice
@@ -115,18 +148,21 @@ def get_prompt_skeleton(subject, experiment_name, args):
         # setup the questionnaire description
         if test_name == "pvq":
             questionnaire_description = "Here we briefly describe some people. Please read each description and think about how much each person is or is not like you. Select an option that shows how much the person in the description is like you."
+            questionnaire_description_empty = False
 
         elif test_name == "hofstede":
             # VSM questionnaire doesn't have a description
             questionnaire_description = ""
+            questionnaire_description_empty = True
 
         elif test_name in ["big5_50", "big5_100"]:
             # VSM questionnaire doesn't have a description
             questionnaire_description = "Mark how much you agree with each statement."
+            questionnaire_description_empty = False
 
         # setup the set_perspective_str
         if args.profile_dict:
-            if args.perspective_amount not in ["extreme", "slight"] and list(args.profile_dict.keys()) != ["Primary values"]:
+            if list(args.profile_dict.keys()) != ["Primary values"] and args.perspective_amount not in ["extreme", "slight", "more", "most"]:
                 raise NotImplementedError('Perspective amount not implemented for keys other than "Primary values".')
 
             # source pvq: https://scholarworks.gvsu.edu/cgi/viewcontent.cgi?article=1116&context=orpc
@@ -185,23 +221,38 @@ def get_prompt_skeleton(subject, experiment_name, args):
                     raise ValueError(f"Variable natural_language_profile_detail is ill-defined ({args.natural_language_profile_detail}).")
 
                 # perspective amount
+                # todo: bug meidum (most) vs expterem (expremely more) -> not clear
                 if args.perspective_amount == "extreme":
                     amount_str = "extremely more importance"
+
                 elif args.perspective_amount == "slight":
                     amount_str = "slightly more importance"
-                elif args.perspective_amount == "medium":
+
+                elif args.perspective_amount == "more":
+                    amount_str = "more importance"
+
+                elif args.perspective_amount == "most":
+                    raise DeprecationWarning("Use 'more' instead.")
                     amount_str = "the most importance"
+
+                elif args.perspective_amount == "medium":
+                    raise DeprecationWarning("Use 'most' instead.")
                 else:
                     raise ValueError("Unrecognized perspective amount {args.perspective_amount}.")
 
                 if args.direct_perspective:
-                    set_perspective_str = f"You are a person attributing {amount_str} to high {primary_values_str}."
+                    if args.pretend:
+                        set_perspective_str = f"You pretending to be a person attributing {amount_str} to high {primary_values_str}."
+                    else:
+                        set_perspective_str = f"You are a person attributing {amount_str} to high {primary_values_str}."
+
                     if values_description:
                         set_perspective_str += f" {values_description}"
                     else:
                         set_perspective_str += "\n"
 
                 else:
+                    assert not args.pretend
                     set_perspective_str = f"The following is a questionnaire (with answers) given to a person attributing {amount_str} to high {primary_values_str}."
                     if values_description:
                         set_perspective_str += f" {values_description}"
@@ -212,6 +263,8 @@ def get_prompt_skeleton(subject, experiment_name, args):
 
                 if args.perspective_amount in ["extreme", "slight"]:
                     amount_str = f"({args.perspective_amount})"
+                elif args.perspective_amount in ["most", "more"]:
+                    raise NotImplementedError(f"{args.perspective_amount} not implemented with kv profile.")
                 else:
                     amount_str = ""
 
@@ -307,29 +360,102 @@ def get_prompt_skeleton(subject, experiment_name, args):
                 "gospel"
             ]
 
-            if args.direct_perspective:
-                # set_perspective_str = f"You are an expert in {music_expert_genre}."
-                set_perspective_str = f"You are an AI expert in {music_expert_genre} music."
+            if args.mcq_context:
+                if args.direct_perspective:
+                    raise ValueError("direct_perspective cannot be used with mcq_context.")
+
+                if args.separator:
+                    raise ValueError("separator cannot be used with mcq_context.")
+
+            elif args.wiki_context:
+                if args.direct_perspective:
+                    raise ValueError("direct_perspective cannot be used with wiki_context.")
+
+                wiki_context = {
+                    "hip-hop": "Hip hop music or hip-hop music, also known as rap music and formerly known as disco rap, is a genre of popular music that originated in the Bronx borough of New York City in the early 1970s by African Americans, and it had been around for years prior before mainstream discovery. This genre of music originated as anti-drug and anti-violence, while consisting of stylized rhythmic music (usually built around drum beats) that commonly accompanies rapping, a rhythmic and rhyming speech that is chanted. According to the professor Asante of African American studies at Temple University, 'hip hop is something that blacks can unequivocally claim as their own'. It was developed as part of hip hop culture, a subculture defined by four key stylistic elements: MCing/rapping, DJing/scratching with turntables, break dancing, and graffiti art. Other elements include sampling beats or bass lines from records (or synthesized beats and sounds), and rhythmic beatboxing. While often used to refer solely to rapping, 'hip hop' more properly denotes the practice of the entire subculture. The term hip hop music is sometimes used synonymously with the term rap music, though rapping is not a required component of hip hop music; the genre may also incorporate other elements of hip hop culture, including DJing, turntablism, scratching, beatboxing, and instrumental tracks.",
+                    "jazz": "Jazz is a music genre that originated in the African-American communities of New Orleans, Louisiana, in the late 19th and early 20th centuries, with its roots in blues and ragtime. Since the 1920s Jazz Age, it has been recognized as a major form of musical expression in traditional and popular music. Jazz is characterized by swing and blue notes, complex chords, call and response vocals, polyrhythms and improvisation. Jazz has roots in European harmony and African rhythmic rituals.",
+                    "classical": "Classical music generally refers to the art music of the Western world, considered to be distinct from Western folk music or popular music traditions. It is sometimes distinguished as Western classical music, as the term 'classical music' also applies to non-Western art music. Classical music is often characterized by formality and complexity in its musical form and harmonic organization, particularly with the use of polyphony. Since at least the ninth century it has been primarily a written tradition, spawning a sophisticated notational system, as well as accompanying literature in analytical, critical, historiographical, musicological and philosophical practices. A foundational component of Western culture, classical music is frequently seen from the perspective of individual or groups of composers, whose compositions, personalities and beliefs have fundamentally shaped its history.",
+                    "heavy metal": "Heavy metal (or simply metal) is a genre of rock music that developed in the late 1960s and early 1970s, largely in the United Kingdom and United States. With roots in blues rock, psychedelic rock and acid rock, heavy metal bands developed a thick, monumental sound characterized by distorted guitars, extended guitar solos, emphatic beats and loudness.",
+                    "reggae": "Reggae (/ˈrɛɡeɪ/) is a music genre that originated in Jamaica in the late 1960s. The term also denotes the modern popular music of Jamaica and its diaspora. A 1968 single by Toots and the Maytals, 'Do the Reggay', was the first popular song to use the word reggae, effectively naming the genre and introducing it to a global audience. While sometimes used in a broad sense to refer to most types of popular Jamaican dance music, the term reggae more properly denotes a particular music style that was strongly influenced by traditional mento as well as American jazz and rhythm and blues, and evolved out of the earlier genres ska and rocksteady. Reggae usually relates news, social gossip, and political commentary. It is instantly recognizable from the counterpoint between the bass and drum downbeat and the offbeat rhythm section. The immediate origins of reggae were in ska and rocksteady; from the latter, reggae took over the use of the bass as a percussion instrument.",
+                    "gospel": "Gospel music is a traditional genre of Christian music, and a cornerstone of Christian media. The creation, performance, significance, and even the definition of gospel music varies according to culture and social context. Gospel music is composed and performed for many purposes, including aesthetic pleasure, religious or ceremonial purposes, and as an entertainment product for the marketplace. Gospel music is characterized by dominant vocals and strong use of harmony with Christian lyrics. Gospel music can be traced to the early 17th century.",
+                }
+
+                set_perspective_str = wiki_context[music_expert_genre]
 
             else:
-                set_perspective_str = f"The following is a questionnaire (with answers) given to an expert AI in {music_expert_genre} music."
+                if args.direct_perspective:
+                    # set_perspective_str = f"You are an expert in {music_expert_genre}."
+                    set_perspective_str = f"You are an AI expert in {music_expert_genre} music."
+
+                else:
+                    set_perspective_str = f"The following is a questionnaire (with answers) given to an expert AI in {music_expert_genre} music."
 
             if args.natural_language_profile:
                 raise NotImplementedError("Natural language profile not implemented.")
 
             # query string
-            if args.direct_perspective:
+            if args.direct_perspective or args.mcq_context or args.wiki_context:
                 query_str = "Answer:"
             else:
                 query_str = f"Answer (from a {music_expert_genre} expert):"
 
+        elif args.no_profile:
+
+            set_perspective_str = ""
+
+            if args.format == "code_py":
+                query_str = """# Choose the answer\nanswer = answers_dict[\""""
+
+                questionnaire_description = f"""query = \"\"\"\n{questionnaire_description}"""
+
+            elif args.format == "code_cpp":
+                query_str = "\t// Choose the answer\n\tstd::string answer = answers_dict[\""
+
+                questionnaire_description = "#include <iostream>\n" + \
+                "#include <string>\n" + \
+                "#include <map>\n" + \
+                "int main() {\n" + \
+                "\tstd::string query = R\"(\n" + \
+                questionnaire_description
+
+            elif args.format == "conf_toml":
+                query_str = "answer = "
+
+                if questionnaire_description_empty:
+                    questionnaire_description = \
+                        "[questionnaire]\n"
+                else:
+                    questionnaire_description = \
+                        "[questionnaire]\n" + \
+                        f"# {questionnaire_description}"
+
+            elif args.format == "latex":
+                query_str = "Answer:"
+
+                questionnaire_description = \
+                    "\\documentclass{article}\n" + \
+                    "\\usepackage{enumitem}\n" + \
+                    "\n" + \
+                    "\\begin{document}\n" + \
+                    "\n" + \
+                    questionnaire_description
+
+            elif args.format == "chat":
+                query_str = "Answer:"
+
+            else:
+                raise ValueError(f"Undefined format {args.format}.")
+
         else:
             raise ValueError("Undefined perspective.")
+
+        # only no_profile with code formats change the questionnaire description
+        assert (not questionnaire_description_empty == questionnaire_description) or (args.no_profile and args.format != "chat")
 
         if args.system_message:
             prompts = {
                 "system": f"{set_perspective_str}".rstrip(), # remove newline from the end
-                "intro": f"{questionnaire_description}\n\n" if questionnaire_description else "",
+                "intro": f"{questionnaire_description}\n\n" if not questionnaire_description_empty else questionnaire_description,
                 "query": f"\n{query_str}",
             }
 
@@ -338,8 +464,8 @@ def get_prompt_skeleton(subject, experiment_name, args):
                 set_perspective_str += "\n" + "-"*200
 
             prompts = {
-                "intro": f"{set_perspective_str}\n\n" +
-                         (f"{questionnaire_description}\n\n" if questionnaire_description else ""),  # if questionnaire_description is empty don't add newlines
+                "intro": (f"{set_perspective_str}\n\n" if set_perspective_str else "") +
+                         (f"{questionnaire_description}\n\n" if not questionnaire_description_empty else questionnaire_description),  # if questionnaire_description is empty don't add newlines
                 "query": f"\n{query_str}",
             }
 
@@ -477,6 +603,7 @@ def get_prompt_skeleton(subject, experiment_name, args):
     else:
         raise DeprecationWarning("Deprecated")
 
+
     return prompts
 
 
@@ -522,9 +649,47 @@ def format_example(df, idx, subject, experiment_name, args, permutations_dict, i
         options_strings.append(op_str)
 
         num_options += 1
+    
+    if args.format in ["code_py"]:
+        prompt += "\n\"\"\"\n\n"
 
-    for ch in choices[:num_options]:
-        prompt += "\n{}. {}".format(ch, options_strings[permutations_dict[ch]])
+        prompt += "# Define the answers dictionary\n"
+        prompt += "answers_dict = {\n"
+
+        for ch in choices[:num_options]:
+
+            prompt += "\t\"{}.\": \"{}\",\n".format(ch, options_strings[permutations_dict[ch]])
+        prompt += "}\n"
+
+    elif args.format in ["code_cpp"]:
+        prompt += "\n)\";\n\n"
+
+        prompt += "\t// Define the answers dictionary\n"
+        prompt += "\tstd::map<std::string, std::string> answers_dict = {\n"
+
+        for ch in choices[:num_options]:
+            prompt += "\t\t{\""+ch+".\", \""+options_strings[permutations_dict[ch]]+"\"},\n"
+        prompt += "\t};\n"
+
+    elif args.format in ["conf_toml"]:
+
+        prompt = prompt.replace("\n", "\n# ")
+        prompt = f"# {prompt}"
+
+        for ch in choices[:num_options]:
+            prompt += f"\n# {ch}. {options_strings[permutations_dict[ch]]}"
+
+    elif args.format in ["latex"]:
+        prompt += "\n\\begin{enumerate}[label=\\Alph*.]\n"
+
+        for ch in choices[:num_options]:
+            prompt += f"\t\\item {options_strings[permutations_dict[ch]]}\n"
+
+        prompt += "\\end{enumerate}"
+
+    else:
+        for ch in choices[:num_options]:
+            prompt += "\n{}. {}".format(ch, options_strings[permutations_dict[ch]])
 
     prompt_skeleton = get_prompt_skeleton(subject=subject, experiment_name=experiment_name, args=args)
     prompt += prompt_skeleton["query"]
@@ -533,30 +698,6 @@ def format_example(df, idx, subject, experiment_name, args, permutations_dict, i
         prompt += " {}\n\n".format(df.iloc[idx, k + 1])
 
     return prompt, num_options, prompt_skeleton
-
-# legacy
-# def format_example_(df, idx, subject, experiment_name, args, permutations_dict, include_answer=True):
-#     prompt = df.iloc[idx, 0]  # add question to prompt
-#     k = df.shape[1] - 2
-#
-#     # extract options
-#     num_options = 0
-#     for j in range(k):
-#         op_str = df.iloc[idx, j + 1]
-#
-#         if op_str == "undef":
-#             continue
-#
-#         prompt += "\n{}. {}".format(choices[j], op_str)
-#         num_options += 1
-#
-#     prompt_skeleton = get_prompt_skeleton(subject=subject, experiment_name=experiment_name, args=args)
-#     prompt += prompt_skeleton["query"]
-#
-#     if include_answer:
-#         prompt += " {}\n\n".format(df.iloc[idx, k + 1])
-#
-#     return prompt, num_options, prompt_skeleton
 
 
 def gen_prompt(train_df, subject, experiment_name, args, permutations_dict, k=-1):
@@ -572,13 +713,36 @@ def gen_prompt(train_df, subject, experiment_name, args, permutations_dict, k=-1
     return prompt
 
 
+def hash_chat_conv(msgs_conv):
+    json_string = json.dumps(msgs_conv)
+
+    # Create a SHA256 hash of the string
+    hash_object = hashlib.sha256(json_string.encode())
+
+    # Get the hexadecimal representation of the hash
+    hex_dig = hash_object.hexdigest()
+
+    return hex_dig
+
+
+#global var todo: implement hashing properly
+messages_conv = None
+messages_conv_hash = None
+
 def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generator=None):
     cors = []
     all_probs = []
     all_answers = []
+
+    global messages_conv
+    # messages_conv = None  # todo: is it ok if it's global -> ran once per eval? (saving money)
     # answers = choices[:test_df.shape[1]-2]
+    global messages_conv_hash
 
     gpt_token_counter = 0
+
+    if args.simulate_conversation_theme and not (args.system_message and engine in ["gpt-3.5-turbo", "gpt-3.5-turbo-0301", "gpt-4-0314", "gpt-3.5-turbo-0613", "gpt-4-0613"]):
+        raise NotImplementedError("simulated conversation is only implemented with direct message and GPT chat models.")
 
     for i in range(test_df.shape[0]):
         if i % 10 == 0:
@@ -586,8 +750,23 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
 
         # get prompt and make sure it fits
         k = args.ntrain
-        prompt_end, n_options, prompt_skeleton = format_example(test_df, i, subject=subject, experiment_name=args.experiment_name, include_answer=False, args=args, permutations_dict=permutations_dict)
-        train_prompt = gen_prompt(dev_df, subject, experiment_name=args.experiment_name, k=k, args=args, permutations_dict=permutations_dict)
+        prompt_end, n_options, prompt_skeleton = format_example(
+            test_df, i,
+            subject=subject,
+            experiment_name=args.experiment_name,
+            include_answer=False,
+            args=args,
+            permutations_dict=permutations_dict
+        )
+
+        train_prompt = gen_prompt(
+            dev_df, subject,
+            experiment_name=args.experiment_name,
+            k=k,
+            args=args,
+            permutations_dict=permutations_dict
+        )
+
         prompt = train_prompt + prompt_end
 
         # all questions have the same number of options
@@ -625,6 +804,9 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             if args.match_tokens_with_space:
                 raise NotImplementedError("Tokens with space not implemented.")
 
+            if args.simulate_conversation_theme:
+                raise NotImplementedError("noisy conversation not implemented for user message")
+
             if args.generative_qa:
                 results, _ = llm_generator.generate(
                     [prompt],
@@ -660,7 +842,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                 # take the answer with the highest log prob
                 generation = max(answers_lprobs, key=answers_lprobs.get)
 
-        elif engine in ["gpt-3.5-turbo", "gpt-4", "gpt-3.5-turbo-0301", "gpt-4-0314"]:
+        elif engine in ["gpt-3.5-turbo-0301", "gpt-4-0314", "gpt-3.5-turbo-0613", "gpt-4-0613"]:
             while True:
                 try:
                     if args.generative_qa:
@@ -684,13 +866,122 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
 
                     if args.system_message:
                         # system message
+                        if args.simulate_conversation_theme:
+
+                            # only simulate the conversation once, use the same in all permutations
+                            if messages_conv is None:
+
+                                # take the theme starter
+                                opening_questions_for_themes = {
+                                    "poem": "Hello, let's write a poem together. You start by the first verse I'll add the second one, and so on.",
+                                    "joke": "Tell me a joke.",
+                                    "history": "What is the significance of the battle of Hastings. Answer in two sentences.", # slight collapse
+                                    "chess": "1. e4",
+                                    "grammar": "Can you check this sentence for grammar? \n Whilst Jane was waiting to meet hers child their nose started bleeding.",
+                                    # "code": "Can you write a bash script that changes the extensions of all the .jpg files to .jpeg.", # collapse
+                                    #
+                                    #
+                                    #
+                                    #
+                                    #
+                                    "religion": "Why do we believe in the assumption of Mary? Please answer in two sentences.",
+                                    "tax": "Can you explain how can my company pay less tax in two sentences?",
+                                    # "vgame": ""...,
+                                    "vacation": "I was thinking of going surfing is that relaxing? Please reply briefly.",
+                                }
+
+                                themes = {
+                                    "poem": "writing a poem together",
+                                    "joke": "telling a joke",
+                                    "history": "talking about history",
+                                    # slight collapse
+                                    "chess": "playing chess",
+                                    "grammar": "asking for grammar corrections",
+                                    # "code": "Can you write a bash script that changes the extensions of all the .jpg files to .jpeg.", # collapse
+                                    #
+                                    #
+                                    #
+                                    #
+                                    #
+                                    "religion": "discussing about religion",
+                                    "tax": "trying to see how to save money for my company",
+                                    "vgame": ...,
+                                    "vacation": "considering options for vacation",
+                                }
+
+                                opening_question = opening_questions_for_themes[args.simulate_conversation_theme]
+                                theme = themes[args.simulate_conversation_theme]
+
+                                conversation = [opening_question]
+
+                                # simulate conversation
+                                n_msgs = 5
+                                assert n_msgs % 2 == 1  # must be odd so that the first one is user role
+
+                                for msg_i in range(n_msgs):
+
+                                    # assign roles to messages - alternating, last one user
+                                    simulated_conv_messages = create_simulated_messages(conversation, last="user")
+
+                                    if msg_i % 2 == 0:
+                                        # even -> gpt as gpt
+                                        assert simulated_conv_messages[0]['role'] == "user"
+                                        engine_ = engine
+
+                                    else:
+                                        assert simulated_conv_messages[0]['role'] == "assistant"
+                                        simulated_conv_messages = [
+                                            {"role": "system", "content": f"You are simulating a human using a chatbot."} # v1
+                                            # {"role": "system", "content": f"You are simulating a human using a chatbot and {theme}."} # v2
+                                        ] + simulated_conv_messages
+
+                                        engine_ = "gpt-4-0613"
+
+                                    c = openai.ChatCompletion.create(
+                                        model=engine_,
+                                        messages=simulated_conv_messages,
+                                        max_tokens=100,
+                                        n=1,
+                                        temperature=0,
+                                        # logit_bias=logit_bias,
+                                        request_timeout=30,
+                                    )
+
+                                    response = c['choices'][0]['message']['content']
+                                    conversation.append(response)
+
+                                messages_conv = create_simulated_messages(conversation, last="assistant")
+
+                                messages_conv_hash = hash_chat_conv(messages_conv)
+
+                                print("SIMULATED CONVERSATION")
+
+                            else:
+                                print("LOADING CACHED CONV")
+                                assert hash_chat_conv(messages_conv) == messages_conv_hash
+
+                            messages = []
+                            if prompt_skeleton["system"] != "":
+                                messages.append({"role": "system", "content": prompt_skeleton["system"]})
+
+                            messages = messages + messages_conv + [{"role": "user", "content": prompt}]
+                            print_chat_messages(messages)
+
+                            # estimate tokens
+                            encoder = tiktoken.encoding_for_model(engine)
+                            print("n_tokens:", len(encoder.encode(" ".join([m["content"] for m in messages[:-1]]))))
+
+                        else:
+                            messages = []
+                            if prompt_skeleton["system"] != "":
+                                messages.append({"role": "system", "content": prompt_skeleton["system"]})
+
+                            messages.append({"role": "user", "content": prompt})
+
+                        print_chat_messages(messages)
                         c = openai.ChatCompletion.create(
                             model=engine,
-                            messages=[
-                                {"role": "system", "content": prompt_skeleton["system"]},
-                                # {"role": "assistant", "content": "The Los Angeles Dodgers won the World Series in 2020."},
-                                {"role": "user", "content": prompt}
-                            ],
+                            messages=messages,
                             max_tokens=max_tokens,
                             n=1,
                             temperature=0,
@@ -699,14 +990,19 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                         )
 
                     else:
+                        if args.simulate_conversation_theme:
+                            raise NotImplementedError("noisy conversation not implemented for user message")
+
                         # user message
+                        messages = [
+                            {"role": "user", "content": prompt}
+                        ]
+
+                        print_chat_messages(messages)
+
                         c = openai.ChatCompletion.create(
                             model=engine,
-                            messages=[
-                                # {"role": "system", "content": ""},
-                                # {"role": "assistant", "content": "The Los Angeles Dodgers won the World Series in 2020."},
-                                {"role": "user", "content": prompt}
-                            ],
+                            messages=messages,
                             max_tokens=max_tokens,
                             n=1,
                             temperature=0,
@@ -729,10 +1025,16 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
 
             lprobs = dummy_lprobs_from_generation(generation, answers)
 
-        elif engine in ["text-davinci-003", "text-davinci-002", "text-davinci-001", "curie", "babbage", "ada"]:
+        elif engine in ["gpt-3.5-turbo-instruct-0914", "text-davinci-003", "text-davinci-002", "text-davinci-001", "curie", "babbage", "ada"]:
 
             if args.generative_qa:
                 raise NotImplementedError("Generative QA not implemented for OpenAI non-ChatGPT models.")
+
+            if args.simulate_conversation_theme:
+                raise NotImplementedError("noisy conversation not implemented for user message")
+
+            if args.system_message:
+                raise NotImplementedError("Text generation models don't have system message")
 
             while True:
                 try:
@@ -740,28 +1042,46 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                         engine=engine,
                         prompt=prompt,
                         max_tokens=1,
-                        logprobs=100,
+                        logprobs=1,
                         temperature=0,
                         echo=True
                     )
                     break
-                except Exception() as e:
+                except Exception as e:
                     print(e)
                     print("Pausing")
                     time.sleep(1)
                     continue
 
-            lprobs = []
-            for ans in answers:
-                try:
-                    lprobs.append(c["choices"][0]["logprobs"]["top_logprobs"][-1][" {}".format(ans)])
-                except:
-                    # print("Warning: {} not found. Artificially adding log prob of -100.".format(ans))
-                    lprobs.append(-100)
+            # lprobs = []
+            # for ans in answers:
+            #     try:
+            #         lprobs.append(c["choices"][0]["logprobs"]["top_logprobs"][-1][" {}".format(ans)])
+            #     except:
+            #         # print("Warning: {} not ada. Artificially adding log prob of -100.".format(ans))
+            #         lprobs.append(-100)
+            # generation = answers[np.argmax(lprobs)]
+
+            assert c["choices"][0]["logprobs"]["top_logprobs"][0] is None
+
+            output_dict = dict([tuple(*i.items()) for i in c["choices"][0]["logprobs"]["top_logprobs"][1:]])
+            option_scores = {
+                ans: output_dict.get(ans, -100) for ans in answers
+            }
+            print("option_scores:", option_scores)
+
+            # take the most probable answer as the generation
+            generation = max(option_scores, key=option_scores.get)
+
+            # extract logprobs
+            lprobs = [float(option_scores[a]) for a in answers]
 
         elif engine in ["openassistant_rlhf2_llama30b"]:
             if args.generative_qa:
                 raise NotImplementedError("Generative QA not implemented for OpenAI non-ChatGPT models.")
+
+            if args.simulate_conversation_theme:
+                raise NotImplementedError("noisy conversation not implemented for user message")
 
             if args.system_message:
                 prompt = f'<prefix>{prompt_skeleton["system"]}</prefix><human>{prompt}<bot>'
@@ -773,6 +1093,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             tokenizer, model = llm_generator
 
             inputs = tokenizer(prompt, return_tensors='pt').to('cuda')
+            start_time = time.time()
             output = model.generate(
                 **inputs,
                 max_new_tokens=1,
@@ -782,6 +1103,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                 return_dict_in_generate=True,
                 output_scores=True
             )
+            print("inference time:", time.time()-start_time)
 
             # extract the score for each possible answer
             option_scores = {
@@ -796,6 +1118,8 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
 
         elif engine in ["stablevicuna"]:
             # todo: combine with stablelm
+            if args.simulate_conversation_theme:
+                raise NotImplementedError("noisy conversation not implemented for user message")
 
             if args.generative_qa:
                 raise NotImplementedError("Generative QA not implemented for OpenAI non-ChatGPT models.")
@@ -820,6 +1144,8 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                 return_dict_in_generate=True,
                 output_scores=True
             )
+            if args.simulate_conversation_theme:
+                raise NotImplementedError("noisy conversation not implemented for user message")
 
             # extract the score for each possible answer
             option_scores = {
@@ -832,7 +1158,78 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             # extract logprobs
             lprobs = [float(option_scores[a]) for a in answers]
 
+        elif engine in ["up_llama_60b_instruct", "up_llama2_70b_instruct_v2"]:
+            if args.simulate_conversation_theme:
+                raise NotImplementedError("noisy conversation not implemented for user message")
+
+            if args.system_message:
+                prompt = f"### System:\n{prompt_skeleton['system']}\n\n### User:\n{prompt}\n\n### Assistant:\n"
+            else:
+                prompt = f"### User:\n{prompt}\n\n### Assistant:\n"
+
+            tokenizer, model = llm_generator
+
+            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+            # del inputs["token_type_ids"]
+            streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+
+            output = model.generate(
+                **inputs,
+                streamer=streamer,
+                use_cache=True,
+                max_new_tokens=1,
+                temperature=0.0001,
+                do_sample=False,
+                top_p=1.0,
+                return_dict_in_generate=True,
+                output_scores=True
+            )
+            # output_text = tokenizer.decode(output[0], skip_special_tokens=True)
+
+            # extract the score for each possible answer
+            option_scores = {
+                ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers
+            }
+            print("option_scores:", option_scores)
+
+            # take the most probable answer as the generation
+            generation = max(option_scores, key=option_scores.get)
+
+            # extract logprobs
+            lprobs = [float(option_scores[a]) for a in answers]
+
+        elif engine in ["rp_incite_7b_instruct", "rp_incite_7b_chat"]:
+            if args.system_message:
+                raise NotImplementedError("System message not implemented for RedPajama.")
+
+            if args.simulate_conversation_theme:
+                raise NotImplementedError("noisy conversation not implemented for user message")
+
+            tokenizer, model = llm_generator
+
+            inputs = tokenizer(prompt, return_tensors='pt').to(model.device)
+
+            output = model.generate(
+                **inputs, max_new_tokens=1, do_sample=False, temperature=0.0001, top_p=1.0, top_k=1,
+                return_dict_in_generate=True, output_scores=True
+            )
+
+            # extract the score for each possible answer
+            option_scores = {
+                ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers
+            }
+
+            print("option_scores:", option_scores)
+
+            # take the most probable answer as the generation
+            generation = max(option_scores, key=option_scores.get)
+
+            # extract logprobs
+            lprobs = [float(option_scores[a]) for a in answers]
+
         elif engine in ["stablelm"]:
+            if args.simulate_conversation_theme:
+                raise NotImplementedError("noisy conversation not implemented for user message")
 
             if args.generative_qa:
                 raise NotImplementedError("Generative QA not implemented for OpenAI non-ChatGPT models.")
@@ -883,7 +1280,8 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             raise ValueError(f"Not recognized model {engine}.")
 
         if args.verbose:
-            if args.system_message:
+            if args.system_message and "gpt" in engine:
+                # only gpt has separate inputs other model just use formatting
                 print(f"Prompt(System):\n{prompt_skeleton['system']}")
                 print(f"Prompt(User):\n{prompt}")
 
@@ -899,7 +1297,6 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                 pred = first_generated_letter
             else:
                 pred = "other"
-
 
             # whitespace before label is ok
             cor = generation.strip().startswith(label)
@@ -1025,6 +1422,7 @@ def main(args):
 
         subjects_to_evaluate = [
             "pvq_male",
+            # "pvq_female",
         ]
         assert set(subjects_to_evaluate).issubset(subjects)
         subjects = subjects_to_evaluate
@@ -1037,6 +1435,7 @@ def main(args):
 
     gpt_tokens_total = 0
 
+    # todo: remove this for loop
     for engine in engines:
         print("engine:", engine)
         # dump results dir
@@ -1046,6 +1445,9 @@ def main(args):
             args.data_dir,
             f"permutations_{args.permutations}",
             f"ntrain_{args.ntrain}",
+            f"no_profile_{args.no_profile}" if args.no_profile else "",
+            f"format_{args.format}",
+            f"simulate_conv_{args.simulate_conversation_theme}" if args.simulate_conversation_theme else "",
             f"lotr_character_{args.lotr_character}" if args.lotr_character else "",
             f"music_expert_{args.music_expert_genre}" if args.music_expert_genre else "",
             f"hobby_{args.hobby}" if args.hobby else "",
@@ -1077,13 +1479,103 @@ def main(args):
                 max_seq_len=2048,
                 max_batch_size=1,
             )
+        elif engine in ["up_llama_60b_instruct", "up_llama2_70b_instruct_v2"]:
+
+            hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
+
+            if engine == "up_llama2_70b_instruct_v2":
+                tokenizer = AutoTokenizer.from_pretrained("upstage/Llama-2-70b-instruct-v2", cache_dir=hf_cache_dir)
+                model = AutoModelForCausalLM.from_pretrained(
+                    "upstage/Llama-2-70b-instruct-v2",
+                    device_map="auto",
+                    torch_dtype=torch.float16,
+                    load_in_8bit=True, cache_dir=hf_cache_dir,
+                    rope_scaling={"type": "dynamic", "factor": 2}  # allows handling of longer inputs
+                )
+
+            elif engine == "up_llama_60b_instruct":
+                hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
+
+                tokenizer = AutoTokenizer.from_pretrained("upstage/llama-65b-instruct", cache_dir=hf_cache_dir)
+                model = AutoModelForCausalLM.from_pretrained(
+                    "upstage/llama-65b-instruct",
+                    device_map="auto",
+                    torch_dtype=torch.float16,
+                    load_in_8bit=True, cache_dir=hf_cache_dir,
+                    rope_scaling={"type": "dynamic", "factor": 2}  # allows handling of longer inputs
+                )
+
+            print("Loaded.")
+            llm_generator = (tokenizer, model)
+
+
+
+        elif engine in ["falcon-40b", "falcon-40b-instruct"]:
+            model_name = f"tiiuae/{engine}"
+            hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
+
+            tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=hf_cache_dir)
+            model = AutoModelForCausalLM.from_pretrained(model_name, cache_dir=hf_cache_dir, trust_remote_code=True)
+            # todo: internet needed -> problem with JZ
+
+            pipeline = transformers.pipeline(
+                "text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True,
+                device_map="auto",
+            )
+            sequences = pipeline(
+                "Girafatron is obsessed with giraffes, the most glorious animal on the face of this Earth. Giraftron believes all other animals are irrelevant when compared to the glorious majesty of the giraffe.\nDaniel: Hello, Girafatron!\nGirafatron:",
+                max_length=200,
+                do_sample=True,
+                top_k=10,
+                num_return_sequences=1,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+            for seq in sequences:
+                print(f"Result: {seq['generated_text']}")
+
+        elif engine in ["rp_incite_7b_instruct", "rp_incite_7b_chat"]:
+
+            MIN_TRANSFORMERS_VERSION = '4.25.1'
+            # check transformers version
+            assert transformers.__version__ >= MIN_TRANSFORMERS_VERSION, f'Please upgrade transformers to version {MIN_TRANSFORMERS_VERSION} or higher.'
+
+            if engine == "rp_incite_7b_instruct":
+
+                # init
+                hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
+                tokenizer = AutoTokenizer.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct", cache_dir=hf_cache_dir)
+                model = AutoModelForCausalLM.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct", torch_dtype=torch.float16, cache_dir=hf_cache_dir)
+
+                # tokenizer = AutoTokenizer.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct")
+                # model = AutoModelForCausalLM.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct", torch_dtype=torch.float16)
+                model = model.to('cuda:0')
+
+
+            elif engine == "rp_incite_7b_chat":
+
+                # init
+                hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
+                tokenizer = AutoTokenizer.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Chat", cache_dir=hf_cache_dir)
+                model = AutoModelForCausalLM.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Chat", torch_dtype=torch.float16, cache_dir=hf_cache_dir)
+                model = model.to('cuda:0')
+
+            else:
+                raise ValueError("Unknown model.")
+
+            print("Loaded.")
+            llm_generator = (tokenizer, model)
+
         elif engine in ["stablelm", "stablevicuna", "openassistant_rlhf2_llama30b"]:
-            hf_cache_dir = "/gpfswork/rech/imi/utu57ed/stablelm_models"
 
             if engine == "stablelm":
                 print("Loading stable-lm-tuned-alpha-7b.")
-                tokenizer = AutoTokenizer.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=hf_cache_dir)
-                model = AutoModelForCausalLM.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=hf_cache_dir)
+                stablelm_cache_dir = "/gpfswork/rech/imi/utu57ed/stablelm_models"
+                tokenizer = AutoTokenizer.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=stablelm_cache_dir)
+                model = AutoModelForCausalLM.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=stablelm_cache_dir)
 
             elif engine == "stablevicuna":
                 print("Loading stable-vicuna-13b.")
@@ -1094,8 +1586,9 @@ def main(args):
                 print("Loading openassistant-rlhf2-llama30b.")
                 tokenizer = AutoTokenizer.from_pretrained("/gpfswork/rech/imi/utu57ed/oasst-rlhf-2-llama-30b-7k-steps-xor/oasst-rlhf-2-llama-30b-7k-steps")
                 print("tokenizer loaded")
+                start_time = time.time()
                 model = AutoModelForCausalLM.from_pretrained("/gpfswork/rech/imi/utu57ed/oasst-rlhf-2-llama-30b-7k-steps-xor/oasst-rlhf-2-llama-30b-7k-steps")
-                print("model loaded")
+                print(f"Model loaded (time={time.time() - start_time})")
 
             else:
                 raise NotImplementedError(f"{engine} not supported")
@@ -1159,6 +1652,8 @@ def main(args):
                 permutations_dicts = [{choices[i]: i for i, c in enumerate(choices)}]
 
             for perm_i, permutations_dict in enumerate(permutations_dicts):
+                print(f"PERMUTATION {perm_i}")
+
                 subj_acc.append({})
                 subj_len.append({})
                 metrics.append({})
@@ -1324,7 +1819,12 @@ def main(args):
         if not os.path.exists(dump_results_dir):
             os.mkdir(dump_results_dir)
 
+        # if not all([(np.mean([m['pvq_male'][k] for m in metrics]) == mean_metrics['pvq_male'][k]) for k in mean_metrics['pvq_male'].keys()]):
+        #     print("The metrics are not consistent.")
+        #     from IPython import embed; embed();
+
         json_dump_path = os.path.join(dump_results_dir, 'results.json')
+
         with open(json_dump_path, 'w') as fp:
             json.dump(
             {
@@ -1366,15 +1866,9 @@ if __name__ == "__main__":
     parser.add_argument("--data_dir", "-d", type=str, default="data")
     parser.add_argument("--save_dir", "-s", type=str, default="results/results_test")
     parser.add_argument("--experiment_name", "-n", type=str, default="")
-    parser.add_argument("--engine", "-e", choices=[
-        "dummy", "interactive",
-        "text-davinci-003", "text-davinci-002", "text-davinci-001", "curie", "babbage", "ada",
-        "gpt-3.5-turbo-0301",
-        "gpt-4-0314",
-        "llama_7B", "llama_13B", "llama_30B", "llama_65B",
-        "stablelm", "stablevicuna",
-        "openassistant_rlhf2_llama30b"
-    ], default=["davinci", "curie", "babbage", "ada"], nargs="+")
+    parser.add_argument("--engine", "-e", nargs="+")
+    parser.add_argument("--format", "-f", type=str, default="chat", choices=[
+        "chat", "code_py", "code_cpp", "conf_toml", "latex"])
     parser.add_argument('--profile', type=str, help='Profile definition in format "k:v;k:v;k:v", ex. "age:35;interests:reading books"')
     parser.add_argument("--generative_qa", "-gqa", action="store_true", help="Use generative question answering instead of MCQ.")
     parser.add_argument("--verbose", "-v", action="store_true")
@@ -1386,20 +1880,22 @@ if __name__ == "__main__":
     parser.add_argument("--eval-set", type=str, default="test", choices=["test", "val"])
     parser.add_argument("--natural-language-profile", "-nlp", action="store_true", help="If true a profile will be defined in natural language as opposed to key value pairs.")
     parser.add_argument("--natural-language-profile-detail", type=str, default=None, choices=["no", "high"])
-    parser.add_argument("--perspective-amount", type=str, default="medium", choices=["extreme", "medium", "slight"])
-    parser.add_argument("--lotr-character", type=str, default=None, choices=[
-        "Gandalf",
-        "Frodo",
-        "Sauron",
-        "Aragorn",
-        "Pippin",
-    ])
+    parser.add_argument("--perspective-amount", type=str, default="medium", choices=["extreme", "medium", "slight", "more", "most"])
+    parser.add_argument("--lotr-character", type=str, default=None, choices=["Gandalf", "Frodo", "Sauron", "Aragorn", "Pippin"])
+    parser.add_argument("--no-profile", action="store_true")  # todo: remove mcq-context?
     parser.add_argument("--music-expert-genre", type=str, default=None)  # todo: add choices
-    parser.add_argument("--hobby", type=str, default=None)  # todo: add choices
+    parser.add_argument("--mcq-context", action="store_true")  # todo: remove mcq-context?
+    parser.add_argument("--wiki-context", action="store_true")
+    parser.add_argument("--context-type", type=str, default=None)
+    # parser.add_argument("--add-noisy-conversation", action="store_true")
+    # parser.add_argument("--simulate-conversation-theme", type=str, default=None, choices=["poem", "joke", "chess", "history", "grammar", "code"]) # todo: invent topics
+    parser.add_argument("--simulate-conversation-theme", type=str, default=None)
+    parser.add_argument("--hobby", type=str, default=None)
     parser.add_argument("--log", "-l", type=bool, default=False)  # doesn't work well for multiproc (bigger llama models) # remove this parameter?
     parser.add_argument("--permutations", "-p", type=int, default=1)
     parser.add_argument("--separator", action="store_true")
     parser.add_argument("--add-high-level-categories", action="store_true")
+    parser.add_argument("--pretend", action="store_true")
     args = parser.parse_args()
 
     profile = {}
@@ -1419,7 +1915,7 @@ if __name__ == "__main__":
         print("LotR character: ", args.lotr_character)
 
     if args.estimate_gpt_tokens:
-        if args.engine[0] not in ["gpt-4-0314", "gpt-3.5-turbo-0301", "dummy"]:
+        if args.engine[0] not in ["gpt-4-0613", "gpt-3.5-turbo-0613", "gpt-4-0314", "gpt-3.5-turbo-0301", "dummy"]:
             raise ValueError("Only gpt-4 gpt-3 and dummy support estimating GPT tokens")
 
     if args.cold_run:
@@ -1428,7 +1924,7 @@ if __name__ == "__main__":
         # just used to show the profile to be used
         exit()
 
-    if not args.separator:
+    if not args.separator and not (args.no_profile or args.mcq_context or args.wiki_context):
         raise ValueError("You are not using a separator?")
 
     if ("gpt-3.5" in args.engine and args.permutations > 50) or ("gpt-4" in args.engine and args.permutations > 5):
@@ -1439,10 +1935,10 @@ if __name__ == "__main__":
         assert args.natural_language_profile
         assert args.natural_language_profile_detail == "no"
 
-    assert args.separator
     assert args.ntrain == 0
 
-    assert sum(map(bool, [args.profile, args.lotr_character, args.music_expert_genre, args.hobby])) == 1
+    # check that only one profile type is active
+    assert sum(map(bool, [args.no_profile, args.profile, args.lotr_character, args.music_expert_genre, args.hobby])) == 1
 
     if "pvq" in args.data_dir and args.profile:
         assert args.add_high_level_categories
