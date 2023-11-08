@@ -13,10 +13,33 @@ import scikit_posthocs as sp
 import pandas as pd
 import pingouin as pg
 from itertools import combinations
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import pearsonr, spearmanr, ConstantInputWarning
 
 def is_strictly_increasing(lst):
     return all(x <= y for x, y in zip(lst, lst[1:]))
+
+def print_dict_values(d):
+    print("\t".join([f"{k:<10}" for k in list(d.keys()) + ["Mean"]]))
+    print("\t\t".join([f"{np.round(s, 2):.2}" for s in list(d.values()) + [np.mean(list(d.values()))]]))
+
+warnings.filterwarnings('error', category=ConstantInputWarning)
+def compute_correlation(scores_1, scores_2, spearman):
+    try:
+        if spearman:
+            correlation, _ = spearmanr(scores_1, scores_2)
+        else:
+            correlation, _ = pearsonr(scores_1, scores_2)
+
+    except ConstantInputWarning:
+        # not ideal but no other way
+        if len(set(scores_1)) == 1 and len(set(scores_2)) == 1:
+            # both constant
+            correlation = 1.0
+        else:
+            # one constant
+            correlation = 0.0
+
+    return correlation
 
 
 def dir_to_label(directory):
@@ -162,10 +185,10 @@ def print_correlation_stats(cs):
         "STD": np.std(cs),
         "Min": np.min(cs),
         "Max": np.max(cs),
-        "Perc 25": np.percentile(cs, 25),
-        "Perc 75": np.percentile(cs, 75),
-        "Skew": skew(cs, axis=0, bias=True),
-        "Kurtosis": kurtosis(cs, axis=0, bias=True)
+        # "Perc 25": np.percentile(cs, 25),
+        # "Perc 75": np.percentile(cs, 75),
+        # "Skew": skew(cs, axis=0, bias=True),
+        # "Kurtosis": kurtosis(cs, axis=0, bias=True)
     }
 
     headers = "\t".join(statistics.keys())
@@ -428,6 +451,7 @@ if __name__ == '__main__':
 
     normalized_evaluation_data = []
     notnorm_evaluation_data = []
+    vals = []
 
     parser = argparse.ArgumentParser()
     parser.add_argument('directories', nargs='+', help='directories containing results.json files')
@@ -458,9 +482,9 @@ if __name__ == '__main__':
 
 
     ignore = [
-        # "religion",
-        # "tax",
-        # "vacation",
+        "religion",
+        "tax",
+        "vacation",
 
         # "grammar",
         # "poem",
@@ -502,6 +526,8 @@ if __name__ == '__main__':
     ignore_patterns = ["gen_space", "gen_w_space"]
     print("Ignoring patterns: ", ignore_patterns)
 
+    rank_order_stability = True
+
     for substring in ignore_patterns:
         directories = [d for d in directories if substring not in d]
 
@@ -515,9 +541,15 @@ if __name__ == '__main__':
         test_set_name = "big5_50"
     elif "big5_100" in directories[0]:
         test_set_name = "big5_100"
+    elif "mmlu" in directories[0]:
+        raise NotImplementedError("not implemented for mmlu")
+        test_set_name = "college_biology"
+        # test_set_name = "college_chemistry"
+        # test_set_name = "college_computer_science"
+        # test_set_name = "college_medicine"
+        # test_set_name = "college_physics"
     else:
         test_set_name = "pvq_male"
-
 
     dir_2_data = {}
     for i, directory in enumerate(directories):
@@ -527,10 +559,10 @@ if __name__ == '__main__':
         if not os.path.isfile(results_json_path):
             continue
 
+
         with open(results_json_path, 'r') as f:
             data = json.load(f)
         dir_2_data[directory] = data
-
 
     if test_set_name == "pvq_male":
         test_set_values = [
@@ -562,6 +594,8 @@ if __name__ == '__main__':
             "Agreeableness",
             "Conscientiousness"
         ]
+    elif "college_" in test_set_name:
+        test_set_values = ["accuracy"]
 
     primary_value_alignments = []
     mean_vars = []
@@ -676,8 +710,23 @@ if __name__ == '__main__':
     normalized_evaluation_data = np.array(normalized_evaluation_data)
     notnorm_evaluation_data = np.array(notnorm_evaluation_data)
 
-    # mean over value dimensions
-    # mean_variance = variances.mean()
+    # for each value we compute the mean and var over perspectives
+    per_value_persp_mean = notnorm_evaluation_data.mean(axis=0).mean(axis=0)
+    # avg over permutation
+    per_value_persp_std = notnorm_evaluation_data.std(axis=0).mean(axis=0)
+    # std over both perspectives and permutation
+    per_value_std_std = notnorm_evaluation_data.std(axis=(0,1))
+
+    print("Per value std of perspectives")
+    for v_, m_, std_, std_std_ in zip(test_set_values, per_value_persp_mean, per_value_persp_std, per_value_std_std):
+        print("{:<15} \tM: {:.2f} \tSD (avg perm): {:.2f} \tSD (sd perm) {:.2f}".format(v_, m_, std_, std_std_))
+    print("{:<15} \tM: {:.2f} \tSD (avg perm): {:.2f} \tSD (sd perm) {:.2f}".format(
+        "Mean",
+        np.mean(per_value_persp_mean),
+        np.mean(per_value_persp_std),
+        np.mean(per_value_std_std)
+    ))
+
 
     # print(f"Mean (over values) Variance (over perspectives): {mean_variance}")
     perm_var = normalized_evaluation_data.var(1).mean()
@@ -688,6 +737,7 @@ if __name__ == '__main__':
     persp_var = normalized_evaluation_data.mean(1).var(0).mean()
     # mean(permut) -> var (persp) -> mean (values)
     print(f"Perspective Var - mean (over values/traits) of var (over perspectives) of mean (over perm) (*10^3): {round(persp_var * (10 ** 3), 2)}")
+
 
     # all_evaluation_data = (n_perspectives, n_permutations, n_values/traits)
     # we do a separate anova for each value/trait
@@ -705,8 +755,10 @@ if __name__ == '__main__':
     print("testing p-value: ", group_p_limit)
 
     if test_set_name == "pvq_male":
-        # PVQ centering - is this reccomented in this manual? # todo: do properly all questions
+        # PVQ centering - is this reccomended in this manual? # todo: do properly all questions
         notnorm_evaluation_data = notnorm_evaluation_data - np.repeat(notnorm_evaluation_data.mean(2)[:,:, np.newaxis], 10, axis=2)
+
+    cohens_ds=defaultdict(list)
 
     for val_i, val in enumerate(test_set_values):
         # value_data = normalized_evaluation_data[:, :, val_i] # value_data = (n_perspectives, n_permutations)
@@ -714,121 +766,46 @@ if __name__ == '__main__':
 
         print(f"\n----------------{val}---------------------")
 
-        assume_assumptions=True
-
-        if assume_assumptions:
-            # it's usually ok to violate assumptions
-            levene_ok = True
-            gaussian = True
-
-        else:
-            # for assumptions
-            alpha = 0.001
-
-            # LEVENE test for equal variance (assumption for anova and tukey)
-            levene_test_stat, levene_p_value = stats.levene(*value_data)
-            if levene_p_value < alpha:  # or whatever alpha level you choose
-                levene_ok = False
-                print(f"Levene not OK (p={levene_p_value}) - not same variances")
-
-            else:
-                levene_ok = True
-                print(f"Levene OK (p={levene_p_value}) - same variances")
-
-            # Shapiro - normality
-            gaussian = []
-            ps = []
-            for v_d in value_data:
-                _, p = shapiro(v_d)
-                ps.append(p)
-
-                if p < alpha:
-                    gaussian.append(False)
-                else:
-                    gaussian.append(True)
-
-                # plt.hist(v_d)
-                # plt.title(f"p = {p} - {'' if gaussian[-1] else 'not'} gaussian")
-                # plt.show()
-
-            gaussian = all(gaussian)
-            # print(f"Gaussian (p={ps}): {gaussian}")
-            print(f"Gaussian (Shapiro) (p={np.round(ps, 5)}): {gaussian}")
-
-        if gaussian:
-            if levene_ok:
-                # standard ANOVA
-                testname = "ANOVA"
-                _, pvalue = stats.f_oneway(*value_data)
-            else:
-                # Welch ANOVA
-                test_name = "Welch ANOVA"
-                df = pd.DataFrame({'score': np.array(value_data).flatten(),
-                                   'group': np.repeat(labels, repeats=50)})
-
-                p_value = pg.welch_anova(dv='score', between='group', data=df)["p-unc"].values
-                assert len(p_value) == 1
-                p_value = p_value[0]
-
-        else:
-            # kruskal
-            testname = "Krushal-Wallis (H-test)"
-            _, pvalue = stats.kruskal(*value_data)
-
+        # standard ANOVA
+        _, pvalue = stats.f_oneway(*value_data)
 
         if pvalue >= group_p_limit:
             different_distr.append(False)
-            print(colored(f"p({testname}): {pvalue} > {group_p_limit}", "red"))
+            print(colored(f"p(ANOVA): {pvalue} > {group_p_limit}", "red"))
+            posthoc_test=False
         else:
             different_distr.append(True)
-            print(colored(f"p({testname}): {pvalue} < {group_p_limit}", "green"))
+            print(colored(f"p(ANOVA): {pvalue} < {group_p_limit}", "green"))
+            posthoc_test=True
 
-            pairs_ind = list(itertools.combinations(range(len(value_data)), 2))
+        # do posthocs and compute cohen's ds
+        pairs_ind = list(itertools.combinations(range(len(value_data)), 2))
 
-            if gaussian and levene_ok:
-                # Tukey
-                tukey_res=tukey_hsd(*value_data)
+        if posthoc_test:
+            tukey_res=tukey_hsd(*value_data) # Tukey test
 
-                # print("\tTukey (p limit) :", p_limit)
-                print("\tTukey (p limit) :", group_p_limit)
-                for pair_ind in pairs_ind:
+        print("\tTukey (p limit) :", group_p_limit)
+        for pair_ind in pairs_ind:
 
-                    res_pvalue = tukey_res.pvalue[pair_ind[0], pair_ind[1]]
+            # cohen's d
+            d = cohen_d(value_data[pair_ind[0]], value_data[pair_ind[1]])
+            cohens_ds[val].append(d)
 
-                    if res_pvalue < p_limit:
-                        d = cohen_d(value_data[pair_ind[0]], value_data[pair_ind[1]])
-                        print("\t{} - {} : p -> {:.8f} d -> {:.8f}".format(labels[pair_ind[0]], labels[pair_ind[1]], res_pvalue, d))
-
-            else:
-                # Dunn
-                dunn_res = sp.posthoc_dunn(value_data, p_adjust='bonferroni')
-                for pair_ind in pairs_ind:
-                    res_pvalue = dunn_res.iloc[pair_ind[0], pair_ind[1]]
-                    if res_pvalue < p_limit:
-                        print("\t{} - {} : {}".format(labels[pair_ind[0]], labels[pair_ind[1]], res_pvalue))
+            # posthoc
+            if posthoc_test:
+                res_pvalue = tukey_res.pvalue[pair_ind[0], pair_ind[1]]
+                if res_pvalue < p_limit:
+                    print("\t{} - {} : p -> {:.8f} d -> {:.8f}".format(
+                        labels[pair_ind[0]],
+                        labels[pair_ind[1]],
+                        res_pvalue, d)
+                    )
 
 
-            # # bonferroni correction
-            # n_comparisons = len(pairs_ind)
-            # bonf_p_limit = p_limit / len(pairs_ind)
-            #
-            # print(f"\tBonferroni corrected p : {p_limit} -> {bonf_p_limit}")
-            # print(f"\t{'t-test' if gaussian else 'u-test'} p < {bonf_p_limit} for: ")
-            #
-            # for pair_ind in pairs_ind:
-            #     if gaussian:
-            #         # welch or standard t-test (welch - leven_ok - equal_var:True)
-            #         res_pvalue = stats.ttest_ind(a=value_data[pair_ind[0]], b=value_data[pair_ind[1]], equal_var=levene_ok).pvalue
-            #     else:
-            #         from IPython import embed; embed();
-            #
-            #         # Mann-Whitney U
-            #         res_pvalue = stats.mannwhitneyu(x=value_data[pair_ind[0]], y=value_data[pair_ind[1]]).pvalue
-            #
-            #     pair_labels = (labels[pair_ind[0]], labels[pair_ind[1]])
-            #     if res_pvalue < bonf_p_limit:
-            #         print("\t{} -> {} < {}".format(pair_labels, res_pvalue, bonf_p_limit))
 
+    avg_abs_cohens_ds = {k:np.mean(np.abs(v)) for k,v in cohens_ds.items()}
+    print(colored("Average absolute cohen's ds:", "green"))
+    print_dict_values(avg_abs_cohens_ds)
 
     # plot bars
     for distr_i, different in enumerate(different_distr):
@@ -866,135 +843,86 @@ if __name__ == '__main__':
     print()
 
     ########################
-    # CORRELATIONS
+    # RANK ORDER STABILITY CORRELATIONS
     ########################
+    if rank_order_stability:
+        print(colored("Pearson Correlation (between perspectives) - permutation order", "green"))
+        corrs = defaultdict(list)
 
-    print(colored("Pearson Correlation (between perspectives) - permutation order", "green"))
-    corrs = defaultdict(list)
+        perm_orders = defaultdict(dict)
 
-    perm_orders = defaultdict(dict)
+        for dir_1, dir_2 in combinations(directories, 2):
 
-    for dir_1, dir_2 in combinations(directories, 2):
+            lab_1 = dir_to_label(dir_1)
+            lab_2 = dir_to_label(dir_2)
 
-        lab_1 = dir_to_label(dir_1)
-        lab_2 = dir_to_label(dir_2)
+            # print(f"{lab_1} vs {lab_2}")
+            for key in keys:
 
-        print(f"{lab_1} vs {lab_2}")
+                scores_1 = [d[test_set_name][key] for d in dir_2_data[dir_1]["per_permutation_metrics"]]
+                scores_2 = [d[test_set_name][key] for d in dir_2_data[dir_2]["per_permutation_metrics"]]
+
+                correlation = compute_correlation(scores_1, scores_2, spearman)
+
+                corrs[key].append(correlation)
+
+                # print(f"\t{key} : {correlation}")
+
+        all_corrs = list(itertools.chain(*corrs.values()))
+        print_aggregated_correlation_stats(all_corrs)
+
+        permutation_order_stabilities = {}
         for key in keys:
+            permutation_order_stabilities[key] = np.mean(corrs[key])
 
-            scores_1 = [d[test_set_name][key] for d in dir_2_data[dir_1]["per_permutation_metrics"]]
-            scores_2 = [d[test_set_name][key] for d in dir_2_data[dir_2]["per_permutation_metrics"]]
+        print("\nPermutation order stability due to perspective change")
+        print_dict_values(permutation_order_stabilities)
 
 
-            if spearman:
-                correlation, _ = spearmanr(scores_1, scores_2)
-            else:
-                correlation, _ = pearsonr(scores_1, scores_2)
+        print("--------------------------------------------------")
 
-            if np.isnan(correlation):
-                # Constant values in one group. Correlation is undefined and artificially set to 0
-                correlation = 0.0
+        # order of perspectives
+        print(colored("Pearson Correlation (between permutations) - perspective order", "green"))
+        corrs = defaultdict(list)
+        persp_orders = defaultdict(dict)
 
-            corrs[key].append(correlation)
 
-            print(f"\t{key} : {correlation}")
+        n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
 
-    for key in keys:
-        print(f"{key}:")
-        print("\tAvg Pearson corr:", np.mean(corrs[key]))
-        print("\tMin Pearson corr:", np.min(corrs[key]))
+        assert n_perms == 50
+        assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
 
-    all_corrs = list(itertools.chain(*corrs.values()))
-    print_aggregated_correlation_stats(all_corrs)
+        for perm_1, perm_2 in combinations(range(n_perms), 2):
 
-    print("--------------------------------------------------")
+            for key in keys:
+                scores_1 = [dir_2_data[d]["per_permutation_metrics"][perm_1][test_set_name][key] for d in directories]
+                scores_2 = [dir_2_data[d]["per_permutation_metrics"][perm_2][test_set_name][key] for d in directories]
 
-    # order of perspectives
-    print(colored("Pearson Correlation (between permutations) - perspective order", "green"))
-    corrs = defaultdict(list)
-    persp_orders = defaultdict(dict)
+                correlation = compute_correlation(scores_1, scores_2, spearman)
+                corrs[key].append(correlation)
 
-    n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
+        all_corrs = list(itertools.chain(*corrs.values()))
+        print_aggregated_correlation_stats(all_corrs)
 
-    assert n_perms == 50
-    assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
-
-    for perm_1, perm_2 in combinations(range(n_perms), 2):
-
+        perspective_order_stabilities = {}
         for key in keys:
-            scores_1 = [dir_2_data[d]["per_permutation_metrics"][perm_1][test_set_name][key] for d in directories]
-            scores_2 = [dir_2_data[d]["per_permutation_metrics"][perm_2][test_set_name][key] for d in directories]
+            perspective_order_stabilities[key] = np.mean(corrs[key])
 
-            if spearman:
-                correlation, _ = spearmanr(scores_1, scores_2)
-            else:
-                correlation, _ = pearsonr(scores_1, scores_2)
+        print("\nPerspective order stability due to permutation change")
+        print_dict_values(perspective_order_stabilities)
 
-            if np.isnan(correlation):
-                # Constant values in one group. Correlation is undefined and artificially set to 0
-                correlation = 0.0
+        print(colored("\nAverage rank-order stability due to permutation change", "green"))
+        # average order stability
+        avg_order_stabilities = {}
+        for k in perspective_order_stabilities.keys():
+            avg_order_stabilities[k] = (permutation_order_stabilities[k] + perspective_order_stabilities[k]) / 2
 
-            corrs[key].append(correlation)
-
-    for key in keys:
-        print(key)
-        print("\tAvg Pearson corr:", np.mean(corrs[key]))
-        print("\tMin Pearson corr:", np.min(corrs[key]))
-
-    all_corrs = list(itertools.chain(*corrs.values()))
-
-    print_aggregated_correlation_stats(all_corrs)
-
-    # print("--------------------------------------------------")
-    # # order of perspectives - avg over permutations first (average scores)
-    # print(colored("Pearson Correlation (between perspectives) - values order (average scores)", "green"))
-    # corrs = list()
-    # key_orders = defaultdict(dict)
-    # persp_scores = defaultdict(dict)
-    #
-    # n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
-    #
-    # assert n_perms == 50
-    # assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
-    #
-    # for d in directories:
-    #     for key in keys:
-    #         persp_scores[d][key] = np.mean([dir_2_data[d]["per_permutation_metrics"][i][test_set_name][key] for i in range(50)])
-    #
-    #     # keys in order
-    #     key_orders[d] = [k for k, v in sorted(persp_scores[d].items(), key=lambda item: item[1])]
-    #
-    # for dir1, dir2 in combinations(directories, 2):
-    #
-    #     if compare_scores:
-    #         # key scores in order
-    #         values1 = [persp_scores[dir1][k] for k in key_orders[dir1]]
-    #         assert is_strictly_increasing(values1)
-    #         # same order of keys (values/traits) with other scores
-    #         values2 = [persp_scores[dir2][k] for k in key_orders[dir1]]
-    #
-    #     else:
-    #         mapping = {v: i for (i, v) in enumerate(key_orders[dir1])}
-    #
-    #         values1 = [mapping[v] for v in key_orders[dir1]]
-    #         values2 = [mapping[v] for v in key_orders[dir2]]
-    #
-    #     if spearman:
-    #         correlation, _ = spearmanr(values1, values2)
-    #     else:
-    #         correlation, _ = pearsonr(values1, values2)
-    #
-    #     if np.isnan(correlation):
-    #         assert compare_scores
-    #         # Constant values in one group. Correlation is undefined and artificially set to 0
-    #         correlation = 0.0
-    #
-    #     print(f"\t{dir_to_label(dir1)} - {dir_to_label(dir2)} : {correlation}")
-    #     corrs.append(correlation)
-    #
-    # print_aggregated_correlation_stats(corrs)
+        print_dict_values(avg_order_stabilities)
 
 
+    ### IPSATIVE CORRELATIONS
+    print("\n\n--------------------------------------------------")
+    print("IPSATIVE CORELATIONS")
     print("--------------------------------------------------")
 
     # order of perspectives - avg over permutations last (average r)
@@ -1003,10 +931,9 @@ if __name__ == '__main__':
     key_orders = defaultdict(dict)
     persp_scores = defaultdict(lambda : defaultdict(dict))
 
-    n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
+    n_perms = len(dir_2_data[directories[0]]["per_permutation_metrics"])
 
     assert n_perms == 50
-    assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
 
     for p_i in range(50):
         for d in directories:
@@ -1022,14 +949,16 @@ if __name__ == '__main__':
         for p_i in range(50):
             scores_1 = [persp_scores[p_i][dir1][k] for k in keys]
             scores_2 = [persp_scores[p_i][dir2][k] for k in keys]
-            if spearman:
-                correlation, _ = spearmanr(scores_1, scores_2)
-            else:
-                correlation, _ = pearsonr(scores_1, scores_2)
 
-            if np.isnan(correlation):
-                # Constant values in one group. Correlation is undefined and artificially set to 0
-                correlation = 0.0
+            correlation = compute_correlation(scores_1, scores_2, spearman)
+            # if spearman:
+            #     correlation, _ = spearmanr(scores_1, scores_2)
+            # else:
+            #     correlation, _ = pearsonr(scores_1, scores_2)
+            #
+            # if np.isnan(correlation):
+            #     # Constant values in one group. Correlation is undefined and artificially set to 0
+            #     correlation = 0.0
 
             correlation_list.append(correlation)
 

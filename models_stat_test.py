@@ -6,10 +6,24 @@ from collections import defaultdict
 import scipy.stats as stats
 from termcolor import colored
 
+data=defaultdict(dict)
 # use t-tests to compare
 
+## Zephyr
+data["zephyr"]["pvq_resS2"] = "results_neurips/results_nat_lang_prof_pvq_test_zephyr-7b-beta_perm_50_System_msg_2nd_prs/"
+data["zephyr"]["pvq_resS3"] = "results_neurips/results_nat_lang_prof_pvq_test_zephyr-7b-beta_perm_50_System_msg_3rd_prs/"
+data["zephyr"]["pvq_resU2"] = "results_neurips/results_nat_lang_prof_pvq_test_zephyr-7b-beta_perm_50_User_msg_2nd_prs/"
+data["zephyr"]["pvq_resU3"] = "results_neurips/results_nat_lang_prof_pvq_test_zephyr-7b-beta_perm_50_User_msg_3rd_prs/"
+data["zephyr"]["hof_resS2"] = "results_neurips/results_nat_lang_prof_hofstede_test_zephyr-7b-beta_perm_50_System_msg_2nd_prs/"
+data["zephyr"]["hof_resS3"] = "results_neurips/results_nat_lang_prof_hofstede_test_zephyr-7b-beta_perm_50_System_msg_3rd_prs/"
+data["zephyr"]["hof_resU2"] = "results_neurips/results_nat_lang_prof_hofstede_test_zephyr-7b-beta_perm_50_User_msg_2nd_prs/"
+data["zephyr"]["hof_resU3"] = "results_neurips/results_nat_lang_prof_hofstede_test_zephyr-7b-beta_perm_50_User_msg_3rd_prs/"
+data["zephyr"]["big5_resS2"] = "results_neurips/results_nat_lang_prof_big5_test_zephyr-7b-beta_perm_50_System_msg_2nd_prs/"
+data["zephyr"]["big5_resS3"] = "results_neurips/results_nat_lang_prof_big5_test_zephyr-7b-beta_perm_50_System_msg_3rd_prs/"
+data["zephyr"]["big5_resU2"] = "results_neurips/results_nat_lang_prof_big5_test_zephyr-7b-beta_perm_50_User_msg_2nd_prs/"
+data["zephyr"]["big5_resU3"] = "results_neurips/results_nat_lang_prof_big5_test_zephyr-7b-beta_perm_50_User_msg_3rd_prs/"
+
 ## GPT4
-data=defaultdict(dict)
 # data["gpt4"]["pvq_resS2"] = "results_neurips/results_nat_lang_prof_pvq_test_gpt-4-0314_perm_50_System_msg_2nd_prs/"
 data["gpt4"]["pvq_resS3"] = "results_neurips/results_nat_lang_prof_pvq_test_gpt-4-0314_perm_50_System_msg_3rd_prs/"
 # data["gpt4"]["pvq_resU2"] = "results_neurips/results_nat_lang_prof_pvq_test_gpt-4-0314_perm_50_User_msg_2nd_prs/"
@@ -172,24 +186,24 @@ data["ada"]["big5_resU2"]="results_neurips/results_nat_lang_prof_big5_test_ada_p
 data["ada"]["big5_resU3"]="results_neurips/results_nat_lang_prof_big5_test_ada_perm_50_User_msg_3rd_prs/"
 
 
-models = ["gpt4", "gpt35m", "gpt35j", "gpt35in", "upllama2","upllama1", "oa", "stvic", "stlm", "llama", "rpchat", "rpincite", "curie", "babbage", "ada"]
+models = ["zephyr", "gpt4", "gpt35m", "gpt35j", "gpt35in", "upllama2","upllama1", "oa", "stvic", "stlm", "llama", "rpchat", "rpincite", "curie", "babbage", "ada"]
 msg = ["S", "U"]
 prs = ["2", "3"]
 
 # pvq
-# questionnaires = ["pvq"]
-# comparisons = [("gpt35m", m) for m in models]
-# label_1 = "pvq_resU2"
+questionnaires = ["pvq"]
+comparisons = [("gpt35m", m) for m in models]
+label_best = "pvq_resU2"
 
 # hof
-# questionnaires = ["hof"]
-# comparisons = [("upllama1", m) for m in models]
-# label_1 = "hof_resU3"
+questionnaires = ["hof"]
+comparisons = [("upllama1", m) for m in models]
+label_best = "hof_resU3"
 #
 # # big5
 questionnaires = ["big5"]
 comparisons = [("gpt35j", m) for m in models]
-label_1 = "big5_resS3"
+label_best = "big5_resS3"
 
 
 # replace paths with data from alignments.json
@@ -219,6 +233,7 @@ for model in models:
                         # Append the data to the list
                         json_data.extend(load_data)
                 data[model][label] = json_data
+
 p_limit = 0.05 / 15
 
 print("p-limit: {}".format(p_limit))
@@ -237,7 +252,7 @@ for mod_1, mod_2 in comparisons:
                 if label not in data[mod_1] or label not in data[mod_2]:
                     continue
 
-                a=data[mod_1][label_1]
+                a=data[mod_1][label_best]
                 b=data[mod_2][label]
 
                 pvalue = stats.ttest_ind(a=a, b=b, equal_var=False).pvalue

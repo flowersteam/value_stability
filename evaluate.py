@@ -4,13 +4,22 @@ import random
 import re
 import json
 from collections import defaultdict
+import os
 
 import matplotlib.pyplot as plt
 import tiktoken
 
 import torch
 import sys
-from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, TextStreamer
+
+hostname = os.uname()[1]
+if hostname == "PTB-09003439":
+    hf_cache_dir = "/home/flowers-user/.cache/huggingface"
+else:
+    hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
+
+os.environ['TRANSFORMERS_CACHE'] = hf_cache_dir
+from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, TextStreamer, pipeline
 import transformers
 
 import json
@@ -22,6 +31,18 @@ def print_chat_messages(messages):
     for msg in messages:
         print(f"{msg['role'].upper()} : {msg['content']}")
     print("*********************")
+
+def parse_hf_outputs(output, tokenizer, answers):
+    # extract the score for each possible answer
+    option_scores = {ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers}
+
+    # take the most probable answer as the generation
+    generation = max(option_scores, key=option_scores.get)
+
+    # extract logprobs
+    lprobs = [float(option_scores[a]) for a in answers]
+
+    return option_scores, generation, lprobs
 
 
 def create_simulated_messages(conv, last="user"):
@@ -78,7 +99,6 @@ timestamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 print("timestamp:", timestamp)
 
 import openai
-import os
 import numpy as np
 import pandas as pd
 import time
@@ -114,7 +134,7 @@ def get_prompt_skeleton(subject, experiment_name, args):
     if sum(map(bool, [args.profile, args.lotr_character, args.music_expert_genre, args.hobby])) > 1:
         raise ValueError("Multiple ways of inducing a perspective are defined.")
 
-    if "pvq" in experiment_name or "hofstede" in experiment_name or "big5" in experiment_name:
+    if "pvq" in experiment_name or "hofstede" in experiment_name or "big5" in experiment_name or "mmlu" in experiment_name:
 
         # Natural language profile is only defined for dictionary profile
         if not args.profile_dict:
@@ -142,6 +162,10 @@ def get_prompt_skeleton(subject, experiment_name, args):
             else:
                 raise ValueError(f"Data dir name is ill-defined {args.data_dir}")
 
+        elif "mmlu" in experiment_name:
+            assert "mmlu" in args.data_dir
+            test_name = "mmlu"
+
         else:
             raise ValueError(f"Experiment name is ill-defined {args.experiment_name}")
 
@@ -154,6 +178,11 @@ def get_prompt_skeleton(subject, experiment_name, args):
             # VSM questionnaire doesn't have a description
             questionnaire_description = ""
             questionnaire_description_empty = True
+
+        elif test_name == "mmlu":
+            # VSM questionnaire doesn't have a description
+            questionnaire_description = "The following are multiple choice questions (with answers)."
+            questionnaire_description_empty = False
 
         elif test_name in ["big5_50", "big5_100"]:
             # VSM questionnaire doesn't have a description
@@ -454,7 +483,7 @@ def get_prompt_skeleton(subject, experiment_name, args):
 
         if args.system_message:
             prompts = {
-                "system": f"{set_perspective_str}".rstrip(), # remove newline from the end
+                "system": f"{set_perspective_str}".rstrip(),  # remove newline from the end
                 "intro": f"{questionnaire_description}\n\n" if not questionnaire_description_empty else questionnaire_description,
                 "query": f"\n{query_str}",
             }
@@ -466,40 +495,6 @@ def get_prompt_skeleton(subject, experiment_name, args):
             prompts = {
                 "intro": (f"{set_perspective_str}\n\n" if set_perspective_str else "") +
                          (f"{questionnaire_description}\n\n" if not questionnaire_description_empty else questionnaire_description),  # if questionnaire_description is empty don't add newlines
-                "query": f"\n{query_str}",
-            }
-
-    elif "mmlu" in experiment_name:
-        raise DeprecationWarning("Deprecated")
-        if args.natural_language_profile:
-            raise NotImplementedError("Natural language profile not implemented.")
-
-        if args.perspective_amount not in ["extreme", "slight"]:
-            raise NotImplementedError("Perspective amount not implemented")
-
-        questionnaire_description = "The following are multiple choice questions (with answers)."
-        prompts = {
-            "intro": f"{questionnaire_description}\n\n",
-            "query": f"\nAnswer:"
-        }
-
-        if args.profile_dict:
-            # we define the perspective through a profile
-            profile_string = "\n".join([
-                f"\t{k}:{v}" for k, v in args.profile_dict.items()
-            ])
-
-            if args.direct_perspective:
-                set_perspective_str = "You are a person with the following profile:"
-                query_str = "Answer:"
-
-            else:
-                set_perspective_str = "The following is a questionnaire (with answers) given to a person with the following profile:"
-                query_str = "Answer (from the person):"
-
-            prompts = {
-                "intro": f"{set_perspective_str}\n"+
-                         f"{profile_string}\n\n",
                 "query": f"\n{query_str}",
             }
 
@@ -742,7 +737,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
     gpt_token_counter = 0
 
     if args.simulate_conversation_theme and not (args.system_message and engine in ["gpt-3.5-turbo", "gpt-3.5-turbo-0301", "gpt-4-0314", "gpt-3.5-turbo-0613", "gpt-4-0613"]):
-        raise NotImplementedError("simulated conversation is only implemented with direct message and GPT chat models.")
+        raise NotImplementedError("simulated conversation is only implemented with system message and GPT chat models.")
 
     for i in range(test_df.shape[0]):
         if i % 10 == 0:
@@ -878,39 +873,12 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                                     "history": "What is the significance of the battle of Hastings. Answer in two sentences.", # slight collapse
                                     "chess": "1. e4",
                                     "grammar": "Can you check this sentence for grammar? \n Whilst Jane was waiting to meet hers child their nose started bleeding.",
-                                    # "code": "Can you write a bash script that changes the extensions of all the .jpg files to .jpeg.", # collapse
-                                    #
-                                    #
-                                    #
-                                    #
-                                    #
                                     "religion": "Why do we believe in the assumption of Mary? Please answer in two sentences.",
                                     "tax": "Can you explain how can my company pay less tax in two sentences?",
-                                    # "vgame": ""...,
                                     "vacation": "I was thinking of going surfing is that relaxing? Please reply briefly.",
                                 }
 
-                                themes = {
-                                    "poem": "writing a poem together",
-                                    "joke": "telling a joke",
-                                    "history": "talking about history",
-                                    # slight collapse
-                                    "chess": "playing chess",
-                                    "grammar": "asking for grammar corrections",
-                                    # "code": "Can you write a bash script that changes the extensions of all the .jpg files to .jpeg.", # collapse
-                                    #
-                                    #
-                                    #
-                                    #
-                                    #
-                                    "religion": "discussing about religion",
-                                    "tax": "trying to see how to save money for my company",
-                                    "vgame": ...,
-                                    "vacation": "considering options for vacation",
-                                }
-
                                 opening_question = opening_questions_for_themes[args.simulate_conversation_theme]
-                                theme = themes[args.simulate_conversation_theme]
 
                                 conversation = [opening_question]
 
@@ -931,8 +899,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                                     else:
                                         assert simulated_conv_messages[0]['role'] == "assistant"
                                         simulated_conv_messages = [
-                                            {"role": "system", "content": f"You are simulating a human using a chatbot."} # v1
-                                            # {"role": "system", "content": f"You are simulating a human using a chatbot and {theme}."} # v2
+                                            {"role": "system", "content": f"You are simulating a human using a chatbot."}
                                         ] + simulated_conv_messages
 
                                         engine_ = "gpt-4-0613"
@@ -1076,6 +1043,57 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             # extract logprobs
             lprobs = [float(option_scores[a]) for a in answers]
 
+        elif engine in ["zephyr-7b-beta"]:
+            if args.simulate_conversation_theme:
+                raise NotImplementedError("Simulated conversation not implemented for zephyr.")
+
+            tokenizer, model, pipe = llm_generator
+
+            assert ("system" in prompt_skeleton) == args.system_message
+
+            messages = []
+            if prompt_skeleton.get("system", "") != "":
+                messages.append({"role": "system", "content": prompt_skeleton["system"]})
+
+            messages.append({"role": "user", "content": prompt})
+            print_chat_messages(messages)
+
+            prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+            output = model.generate(
+                **inputs,
+                max_new_tokens=1,
+                # temperature=0.0001,
+                do_sample=False,
+                top_p=1.0,
+                return_dict_in_generate=True,
+                output_scores=True
+            )
+            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
+
+            # ### todo: remove below
+            #  tokenizers and models are the same, pipe adds whitespace in encoding
+            # prompt_ = pipe.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            # output_ = pipe(
+            #     prompt_,
+            #     max_new_tokens=1,
+            #     do_sample=False,
+            #     # temperature=0.0001,
+            #     top_p=1.0,
+            #     # return_full_text=True,
+            #     # return_all_scores=True,
+            #     # return_dict_in_generate=True,
+            #     # output_scores=True
+            # )
+            # generated_text = tokenizer.decode(output['sequences'][0], skip_special_tokens=False)
+            # generated_text_ = output_[0]['generated_text']
+            #
+            # generated_text = tokenizer.decode(output['sequences'][0], skip_special_tokens=False).split("assistant|>")[1]
+            # generated_text_ = output_[0]['generated_text'].split("assistant|>")[1]
+            # if not generated_text == generated_text_:
+            #     from IPython import embed; embed();
+
+
         elif engine in ["openassistant_rlhf2_llama30b"]:
             if args.generative_qa:
                 raise NotImplementedError("Generative QA not implemented for OpenAI non-ChatGPT models.")
@@ -1093,6 +1111,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             tokenizer, model = llm_generator
 
             inputs = tokenizer(prompt, return_tensors='pt').to('cuda')
+            del inputs["token_type_ids"]
             start_time = time.time()
             output = model.generate(
                 **inputs,
@@ -1105,16 +1124,14 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             )
             print("inference time:", time.time()-start_time)
 
-            # extract the score for each possible answer
-            option_scores = {
-                ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers
-            }
+            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
 
-            # take the most probable answer as the generation
-            generation = max(option_scores, key=option_scores.get)
+            # todo: remove if assert doesn't fail
+            option_scores_ = { ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers }
+            generation_ = max(option_scores, key=option_scores.get)
+            lprobs_ = [float(option_scores[a]) for a in answers]
 
-            # extract logprobs
-            lprobs = [float(option_scores[a]) for a in answers]
+            assert (option_scores_, generation_, lprobs_) == (option_scores, generation, lprobs)
 
         elif engine in ["stablevicuna"]:
             # todo: combine with stablelm
@@ -1147,16 +1164,11 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             if args.simulate_conversation_theme:
                 raise NotImplementedError("noisy conversation not implemented for user message")
 
-            # extract the score for each possible answer
-            option_scores = {
-                ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers
-            }
-
-            # take the most probable answer as the generation
-            generation = max(option_scores, key=option_scores.get)
-
-            # extract logprobs
-            lprobs = [float(option_scores[a]) for a in answers]
+            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
+            option_scores_ = { ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers }
+            generation_ = max(option_scores, key=option_scores.get)
+            lprobs_ = [float(option_scores[a]) for a in answers]
+            assert (option_scores_, generation_, lprobs_) == (option_scores, generation, lprobs)
 
         elif engine in ["up_llama_60b_instruct", "up_llama2_70b_instruct_v2"]:
             if args.simulate_conversation_theme:
@@ -1170,7 +1182,9 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             tokenizer, model = llm_generator
 
             inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-            # del inputs["token_type_ids"]
+            if "token_type_ids" in inputs:
+                del inputs["token_type_ids"]
+
             streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
             output = model.generate(
@@ -1178,7 +1192,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                 streamer=streamer,
                 use_cache=True,
                 max_new_tokens=1,
-                temperature=0.0001,
+                # temperature=0.0001,
                 do_sample=False,
                 top_p=1.0,
                 return_dict_in_generate=True,
@@ -1186,17 +1200,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             )
             # output_text = tokenizer.decode(output[0], skip_special_tokens=True)
 
-            # extract the score for each possible answer
-            option_scores = {
-                ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers
-            }
-            print("option_scores:", option_scores)
-
-            # take the most probable answer as the generation
-            generation = max(option_scores, key=option_scores.get)
-
-            # extract logprobs
-            lprobs = [float(option_scores[a]) for a in answers]
+            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
 
         elif engine in ["rp_incite_7b_instruct", "rp_incite_7b_chat"]:
             if args.system_message:
@@ -1214,18 +1218,11 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                 return_dict_in_generate=True, output_scores=True
             )
 
-            # extract the score for each possible answer
-            option_scores = {
-                ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers
-            }
-
-            print("option_scores:", option_scores)
-
-            # take the most probable answer as the generation
-            generation = max(option_scores, key=option_scores.get)
-
-            # extract logprobs
-            lprobs = [float(option_scores[a]) for a in answers]
+            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
+            option_scores_ = { ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers }
+            generation_ = max(option_scores, key=option_scores.get)
+            lprobs_ = [float(option_scores[a]) for a in answers]
+            assert (option_scores_, generation_, lprobs_) == (option_scores, generation, lprobs)
 
         elif engine in ["stablelm"]:
             if args.simulate_conversation_theme:
@@ -1265,16 +1262,11 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
                 output_scores=True
             )
 
-            # extract the score for each possible answer
-            option_scores = {
-                ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers
-            }
-
-            # take the most probable answer as the generation
-            generation = max(option_scores, key=option_scores.get)
-
-            # extract logprobs
-            lprobs = [float(option_scores[a]) for a in answers]
+            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
+            option_scores_ = { ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers }
+            generation_ = max(option_scores, key=option_scores.get)
+            lprobs_ = [float(option_scores[a]) for a in answers]
+            assert (option_scores_, generation_, lprobs_) == (option_scores, generation, lprobs)
 
         else:
             raise ValueError(f"Not recognized model {engine}.")
@@ -1385,17 +1377,23 @@ def main(args):
         assert "data_mmlu" in args.data_dir
 
         subjects_to_evaluate = [
-            "high_school_biology",
-            "high_school_chemistry",
-            "high_school_computer_science",
-            "high_school_european_history",
-            "high_school_geography",
-            "high_school_mathematics",
-            "high_school_physics",
-            "high_school_psychology",
-            "high_school_us_history",
-            "high_school_world_history",
+            'high_school_biology',
+            'high_school_chemistry',
+            'high_school_computer_science',
+            'high_school_european_history',
+            'high_school_geography',
+            'high_school_government_and_politics',
+            'high_school_macroeconomics',
+            'high_school_mathematics',
+            'high_school_microeconomics',
+            'high_school_physics',
+            'high_school_psychology',
+            'high_school_statistics',
+            'high_school_us_history',
+            'high_school_world_history'
         ]
+
+        assert set(subjects_to_evaluate).issubset(subjects)
         subjects = subjects_to_evaluate
 
     if "mmlu_college" in args.experiment_name:
@@ -1412,7 +1410,9 @@ def main(args):
         assert set(subjects_to_evaluate).issubset(subjects)
         subjects = subjects_to_evaluate
 
+        # assert all college subjects are taken
         # subjects = [s for s in subjects if "college" in s]
+
 
     if "data_hofstede" == args.data_dir:
         assert "hofstede" in args.experiment_name
@@ -1479,9 +1479,22 @@ def main(args):
                 max_seq_len=2048,
                 max_batch_size=1,
             )
-        elif engine in ["up_llama_60b_instruct", "up_llama2_70b_instruct_v2"]:
 
-            hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
+        elif engine in ["zephyr-7b-beta"]:
+            print("Loading zephyr-7b-beta")
+            zephyr_pipe = transformers.pipeline(
+                "text-generation",
+                model="HuggingFaceH4/zephyr-7b-beta",
+                torch_dtype=torch.bfloat16,
+                device_map="auto"
+            )
+
+            tokenizer = AutoTokenizer.from_pretrained("HuggingFaceH4/zephyr-7b-beta", cache_dir=hf_cache_dir, device_map="auto")
+            model = AutoModelForCausalLM.from_pretrained("HuggingFaceH4/zephyr-7b-beta", torch_dtype=torch.bfloat16, device_map="auto", cache_dir=hf_cache_dir)
+
+            llm_generator = (tokenizer, model, zephyr_pipe)
+
+        elif engine in ["up_llama_60b_instruct", "up_llama2_70b_instruct_v2"]:
 
             if engine == "up_llama2_70b_instruct_v2":
                 tokenizer = AutoTokenizer.from_pretrained("upstage/Llama-2-70b-instruct-v2", cache_dir=hf_cache_dir)
@@ -1494,7 +1507,6 @@ def main(args):
                 )
 
             elif engine == "up_llama_60b_instruct":
-                hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
 
                 tokenizer = AutoTokenizer.from_pretrained("upstage/llama-65b-instruct", cache_dir=hf_cache_dir)
                 model = AutoModelForCausalLM.from_pretrained(
@@ -1505,14 +1517,12 @@ def main(args):
                     rope_scaling={"type": "dynamic", "factor": 2}  # allows handling of longer inputs
                 )
 
-            print("Loaded.")
             llm_generator = (tokenizer, model)
 
 
-
         elif engine in ["falcon-40b", "falcon-40b-instruct"]:
+            raise NotImplementedError("Falcon not implemented.")
             model_name = f"tiiuae/{engine}"
-            hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
 
             tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=hf_cache_dir)
             model = AutoModelForCausalLM.from_pretrained(model_name, cache_dir=hf_cache_dir, trust_remote_code=True)
@@ -1546,7 +1556,6 @@ def main(args):
             if engine == "rp_incite_7b_instruct":
 
                 # init
-                hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
                 tokenizer = AutoTokenizer.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct", cache_dir=hf_cache_dir)
                 model = AutoModelForCausalLM.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct", torch_dtype=torch.float16, cache_dir=hf_cache_dir)
 
@@ -1558,7 +1567,6 @@ def main(args):
             elif engine == "rp_incite_7b_chat":
 
                 # init
-                hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
                 tokenizer = AutoTokenizer.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Chat", cache_dir=hf_cache_dir)
                 model = AutoModelForCausalLM.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Chat", torch_dtype=torch.float16, cache_dir=hf_cache_dir)
                 model = model.to('cuda:0')
@@ -1566,16 +1574,15 @@ def main(args):
             else:
                 raise ValueError("Unknown model.")
 
-            print("Loaded.")
             llm_generator = (tokenizer, model)
+
 
         elif engine in ["stablelm", "stablevicuna", "openassistant_rlhf2_llama30b"]:
 
             if engine == "stablelm":
                 print("Loading stable-lm-tuned-alpha-7b.")
-                stablelm_cache_dir = "/gpfswork/rech/imi/utu57ed/stablelm_models"
-                tokenizer = AutoTokenizer.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=stablelm_cache_dir)
-                model = AutoModelForCausalLM.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=stablelm_cache_dir)
+                tokenizer = AutoTokenizer.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=hf_cache_dir)
+                model = AutoModelForCausalLM.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=hf_cache_dir)
 
             elif engine == "stablevicuna":
                 print("Loading stable-vicuna-13b.")
@@ -1594,31 +1601,40 @@ def main(args):
                 raise NotImplementedError(f"{engine} not supported")
 
             model.half().cuda()
-            print("Loaded.")
             llm_generator = (tokenizer, model)
 
         else:
             llm_generator = None
 
+        print(f"Loaded model: {args.engine}.")
+
         all_cors = []
 
         # list because of permutations
-        subj_acc = []
-        subj_len = []
-        metrics = []
-        answers = []
+        subj_acc = [{} for _ in range(args.permutations)]
+        subj_len = [{} for _ in range(args.permutations)]
+        metrics = [{} for _ in range(args.permutations)]
+        answers = [{} for _ in range(args.permutations)]
 
         for subject in subjects:
             if args.ntrain >= 1:
                 # create in-context examples from dev
-                dev_df = pd.read_csv(os.path.join(args.data_dir, "dev", subject + "_dev.csv"), header=None)[:args.ntrain]
+                dev_df = pd.read_csv(
+                    os.path.join(args.data_dir, "dev", subject + "_dev.csv"),
+                    header=None,
+                    keep_default_na=False,
+                )[:args.ntrain]
                 # if the question contains \n in the csv it will get parsed as \\n, we revert it back here to be newline
                 dev_df[0][:] = dev_df[0][:].str.replace("\\n", "\n")
 
             else:
                 dev_df = None
 
-            test_df = pd.read_csv(os.path.join(args.data_dir, args.eval_set, subject + f"_{args.eval_set}.csv"), header=None)
+            test_df = pd.read_csv(
+                os.path.join(args.data_dir, args.eval_set, subject + f"_{args.eval_set}.csv"),
+                header=None,
+                keep_default_na=False,
+            )
             # if the question contains \n in the csv it will get parsed as \\n, we revert it back here to be newline
             test_df[0][:] = test_df[0][:].str.replace("\\n", "\n")
 
@@ -1654,10 +1670,10 @@ def main(args):
             for perm_i, permutations_dict in enumerate(permutations_dicts):
                 print(f"PERMUTATION {perm_i}")
 
-                subj_acc.append({})
-                subj_len.append({})
-                metrics.append({})
-                answers.append({})
+                # subj_acc.append({})
+                # subj_len.append({})
+                # metrics.append({})
+                # answers.append({})
 
                 cors, acc, probs, preds, gpt_tokens = eval(
                     args=args,
@@ -1816,12 +1832,11 @@ def main(args):
 
                 plot_dict(m, savefile=os.path.join(dump_results_dir, f"plot_{subj}.png"))
 
+        # accuracy
+        plot_dict(mean_subj_acc, savefile=os.path.join(dump_results_dir, f"plot_mean_acc.png"))
+
         if not os.path.exists(dump_results_dir):
             os.mkdir(dump_results_dir)
-
-        # if not all([(np.mean([m['pvq_male'][k] for m in metrics]) == mean_metrics['pvq_male'][k]) for k in mean_metrics['pvq_male'].keys()]):
-        #     print("The metrics are not consistent.")
-        #     from IPython import embed; embed();
 
         json_dump_path = os.path.join(dump_results_dir, 'results.json')
 

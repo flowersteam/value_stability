@@ -8,8 +8,34 @@ Setup the conda env
 ```
 conda create -n llm_persp python=3.9
 pip install -r requirements.txt 
-pip install git+https://github.com/huggingface/transformers@c612628045821f909020f7eb6784c79700813eda
+
+# install transformers
+pip install git+https://github.com/huggingface/transformers.git
+pip install -i https://test.pypi.org/simple/ bitsandbytes
+conda install cudatoolkit -y
 ```
+
+For openassistant create new env 
+```
+conda create --name llm_persp_oa --clone llm_persp
+pip install git+https://github.com/huggingface/transformers@d04ec99bec8a0b432fc03ed60cea9a1a20ebaf3c
+```
+
+[//]: # (or)
+
+[//]: # (```)
+
+[//]: # (git clone https://github.com/huggingface/transformers.git)
+
+[//]: # (cd transformers)
+
+[//]: # (git checkout d04ec99bec8a0b432fc03ed60cea9a1a20ebaf3c)
+
+[//]: # (pip install .)
+
+[//]: # (```)
+
+
 
 
 ### Install llama if you want to run LLaMa models (this step is not needed to recreate experiments in the paper)
