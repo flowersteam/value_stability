@@ -1,3 +1,37 @@
+# table of formats
+# correlations
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_gpt-3.5-turbo-0613_perm_50_format/* --save --filename pvq_formats_gpt35j_50 | grep -E -A 1 "^Mean|pvq_formats"
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_gpt-3.5-turbo-0301_perm_50_format/* --save --filename pvq_formats_gpt35m_50 | grep -E -A 1 "^Mean|pvq_formats"
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_up_llama2_70b_instruct_v2_perm_50_format/* --save --filename pvq_formats_llama2_50 | grep -E -A 1 "^Mean|pvq_formats"
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_up_llama_60b_instruct_perm_50_format/* --save --filename pvq_formats_llama_50 | grep -E -A 1 "^Mean|pvq_formats"
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_openassistant_rlhf2_llama30b_perm_50_format/* --save --filename pvq_formats_oa_50 | grep -E -A 1 "^Mean|pvq_formats"
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_zephyr-7b-beta_perm_50_format/* --save --filename pvq_formats_zephyr_50 | grep -E -A 1 "^Mean|pvq_formats"
+
+## Mean SD
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_gpt-3.5-turbo-0613_perm_50_format/* --save --filename pvq_formats_gpt35j_50 | grep '^Mean.*SD (avg per\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_gpt-3.5-turbo-0301_perm_50_format/* --save --filename pvq_formats_gpt35m_50 | grep '^Mean.*SD (avg per\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_up_llama2_70b_instruct_v2_perm_50_format/* --save --filename pvq_formats_llama2_50 | grep '^Mean.*SD (avg per\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_up_llama_60b_instruct_perm_50_format/* --save --filename pvq_formats_llama_50 | grep '^Mean.*SD (avg per\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_openassistant_rlhf2_llama30b_perm_50_format/* --save --filename pvq_formats_oa_50 | grep '^Mean.*SD (avg per\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_zephyr-7b-beta_perm_50_format/* --save --filename pvq_formats_zephyr_50 | grep '^Mean.*SD (avg per\|pvq_format'
+
+# Rank-order stability
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_gpt-3.5-turbo-0613_perm_50_format/* --save --filename pvq_formats_gpt35j_50 | grep -A 2 '^Average rank-order\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_gpt-3.5-turbo-0301_perm_50_format/* --save --filename pvq_formats_gpt35m_50 | grep -A 2 '^Average rank-order\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_up_llama2_70b_instruct_v2_perm_50_format/* --save --filename pvq_formats_llama2_50 | grep -A 2 '^Average rank-order\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_up_llama_60b_instruct_perm_50_format/* --save --filename pvq_formats_llama_50 | grep -A 2 '^Average rank-order\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_openassistant_rlhf2_llama30b_perm_50_format/* --save --filename pvq_formats_oa_50 | grep -A 2 '^Average rank-order\|pvq_format'
+#python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_zephyr-7b-beta_perm_50_format/* --save --filename pvq_formats_zephyr_50 | grep -A 2 '^Average rank-order\|pvq_format'
+
+# AVG cohen's ds
+python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_gpt-3.5-turbo-0613_perm_50_format/* --save --filename pvq_formats_gpt35j_50 | grep -A 2 '^Average absolute\|pvq_format'
+python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_gpt-3.5-turbo-0301_perm_50_format/* --save --filename pvq_formats_gpt35m_50 | grep -A 2 '^Average absolute\|pvq_format'
+python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_up_llama2_70b_instruct_v2_perm_50_format/* --save --filename pvq_formats_llama2_50 | grep -A 2 '^Average absolute\|pvq_format'
+python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_up_llama_60b_instruct_perm_50_format/* --save --filename pvq_formats_llama_50 | grep -A 2 '^Average absolute\|pvq_format'
+python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_openassistant_rlhf2_llama30b_perm_50_format/* --save --filename pvq_formats_oa_50 | grep -A 2 '^Average absolute\|pvq_format'
+python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_format_zephyr-7b-beta_perm_50_format/* --save --filename pvq_formats_zephyr_50 | grep -A 2 '^Average absolute\|pvq_format'
+
+
 ##GPTm
 
 #PVQ
@@ -11,9 +45,9 @@
 #python visualization_scripts/bar_viz.py results_iclr/results_AI_wiki_context_v2_no_separator_music_expert_hofstede_test_gpt-3.5-turbo-0301_perm_50_User_msg_3rd_prs/* --save --filename hof_wiki_gpt35m_50
 
 # BIG5
-python visualization_scripts/bar_viz.py results_iclr/results_big5_test_sim_conv_gpt-3.5-turbo-0301_perm__theme/* --save --filename big5_sim_conv_gpt35m_50
-python visualization_scripts/bar_viz.py results_iclr/results_big5_test_format_gpt-3.5-turbo-0301_perm_50_format/* --save --filename big5_formats_gpt35m_50
-python visualization_scripts/bar_viz.py results_iclr/results_AI_wiki_context_v2_no_separator_music_expert_big5_test_gpt-3.5-turbo-0301_perm_50_User_msg_3rd_prs/* --save --filename big5_wiki_gpt35m_50
+#python visualization_scripts/bar_viz.py results_iclr/results_big5_test_sim_conv_gpt-3.5-turbo-0301_perm__theme/* --save --filename big5_sim_conv_gpt35m_50
+#python visualization_scripts/bar_viz.py results_iclr/results_big5_test_format_gpt-3.5-turbo-0301_perm_50_format/* --save --filename big5_formats_gpt35m_50
+#python visualization_scripts/bar_viz.py results_iclr/results_AI_wiki_context_v2_no_separator_music_expert_big5_test_gpt-3.5-turbo-0301_perm_50_User_msg_3rd_prs/* --save --filename big5_wiki_gpt35m_50
 
 
 #GPTj

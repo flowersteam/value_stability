@@ -25,7 +25,7 @@ big5_values_list=(
 )
 
 message_options=(
-#  "System"
+  "System"
   "User"
 )
 
@@ -37,7 +37,7 @@ person_options=(
 #ENGINE="gpt-4-0314"
 #ENGINE="gpt-3.5-turbo-0301"
 #ENGINE="gpt-3.5-turbo-0613"
-ENGINE="gpt-3.5-turbo-instruct-0914"
+#ENGINE="gpt-3.5-turbo-instruct-0914"
 
 #ENGINE="openassistant_rlhf2_llama30b"
 #ENGINE="stablevicuna"
@@ -54,6 +54,7 @@ ENGINE="gpt-3.5-turbo-instruct-0914"
 #ENGINE="curie"
 #ENGINE="text-davinci-003"
 #ENGINE="dummy"
+ENGINE="zephyr-7b-beta"
 
 
 PERMUTATIONS=50

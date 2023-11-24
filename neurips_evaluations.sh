@@ -26,6 +26,28 @@ extract_var_value() {
 ############################3
 #### Experiment 3
 ############################3
+### GPT4_5
+#echo "\multicolumn{2}{l}{\textit{5 permutations}} \\\\"
+## PVQ
+#pvq_resS2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_pvq_test_gpt-4-0314_perm_5_System_msg_2nd_prs/* --save --filename neurips_plots/pvq_gpt4_5_S2`
+#pvq_resS3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_pvq_test_gpt-4-0314_perm_5_System_msg_3rd_prs/* --save --filename neurips_plots/pvq_gpt4_5_S3`
+#pvq_resU2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_pvq_test_gpt-4-0314_perm_5_User_msg_2nd_prs/* --save --filename neurips_plots/pvq_gpt4_5_U2`
+#pvq_resU3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_pvq_test_gpt-4-0314_perm_5_User_msg_3rd_prs/* --save --filename neurips_plots/pvq_gpt4_5_U3`
+#
+## Hofstede
+#hof_resS2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_hofstede_test_gpt-4-0314_perm_5_System_msg_2nd_prs/* --save --filename neurips_plots/hof_gpt4_5_S2`
+#hof_resS3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_hofstede_test_gpt-4-0314_perm_5_System_msg_3rd_prs/* --save --filename neurips_plots/hof_gpt4_5_S3`
+#hof_resU2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_hofstede_test_gpt-4-0314_perm_5_User_msg_2nd_prs/* --save --filename neurips_plots/hof_gpt4_5_U2`
+#hof_resU3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_hofstede_test_gpt-4-0314_perm_5_User_msg_3rd_prs/* --save --filename neurips_plots/hof_gpt4_5_U3`
+#
+#
+## Big5_5
+#big5_resS2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_big5_test_gpt-4-0314_perm_5_System_msg_2nd_prs/* --save --filename neurips_plots/big5_gpt4_5_S2`
+#big5_resS3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_big5_test_gpt-4-0314_perm_5_System_msg_3rd_prs/* --save --filename neurips_plots/big5_gpt4_5_S3`
+#big5_resU2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_big5_test_gpt-4-0314_perm_5_User_msg_2nd_prs/* --save --filename neurips_plots/big5_gpt4_5_U2`
+#big5_resU3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_big5_test_gpt-4-0314_perm_5_User_msg_3rd_prs/* --save --filename neurips_plots/big5_gpt4_5_U3`
+#
+#echo "GPT-4 & $(extract_value "$pvq_resS2") & $(extract_value "$pvq_resS3") & $(extract_value "$pvq_resU2") & $(extract_value "$pvq_resU3") & $(extract_value "$hof_resS2") & $(extract_value "$hof_resS3") & $(extract_value "$hof_resU2") & $(extract_value "$hof_resU3") & $(extract_value "$big5_resS2") & $(extract_value "$big5_resS3") & $(extract_value "$big5_resU2") & $(extract_value "$big5_resU3") \\\\"
 
 ### GPT4_5
 #echo "\multicolumn{2}{l}{\textit{5 permutations}} \\\\"
@@ -71,6 +93,28 @@ extract_var_value() {
 #
 #echo "GPT-3.5 & $(extract_value "$pvq_resS2") & $(extract_value "$pvq_resS3") & $(extract_value "$pvq_resU2") & $(extract_value "$pvq_resU3") & $(extract_value "$hof_resS2") & $(extract_value "$hof_resS3") & $(extract_value "$hof_resU2") & $(extract_value "$hof_resU3") & $(extract_value "$big5_resS2") & $(extract_value "$big5_resS3") & $(extract_value "$big5_resU2") & $(extract_value "$big5_resU3") \\\\"
 
+## GPT35_5
+# PVQ
+pvq_resS2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_pvq_test_zephyr-7b-beta_perm_50_System_msg_2nd_prs/* --save --filename neurips_plots/pvq_zep_50_S2`
+pvq_resS3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_pvq_test_zephyr-7b-beta_perm_50_System_msg_3rd_prs/* --save --filename neurips_plots/pvq_zep_50_S3`
+pvq_resU2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_pvq_test_zephyr-7b-beta_perm_50_User_msg_2nd_prs/* --save --filename neurips_plots/pvq_zep_50_U2`
+pvq_resU3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_pvq_test_zephyr-7b-beta_perm_50_User_msg_3rd_prs/* --save --filename neurips_plots/pvq_zep_50_U3`
+
+# Hofstede
+hof_resS2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_hofstede_test_zephyr-7b-beta_perm_50_System_msg_2nd_prs/* --save --filename neurips_plots/hof_zep_50_S2`
+hof_resS3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_hofstede_test_zephyr-7b-beta_perm_50_System_msg_3rd_prs/* --save --filename neurips_plots/hof_zep_50_S3`
+hof_resU2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_hofstede_test_zephyr-7b-beta_perm_50_User_msg_2nd_prs/* --save --filename neurips_plots/hof_zep_50_U2`
+hof_resU3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_hofstede_test_zephyr-7b-beta_perm_50_User_msg_3rd_prs/* --save --filename neurips_plots/hof_zep_50_U3`
+
+# Big5_5
+big5_resS2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_big5_test_zephyr-7b-beta_perm_50_System_msg_2nd_prs/* --save --filename neurips_plots/big5_zep_50_S2`
+big5_resS3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_big5_test_zephyr-7b-beta_perm_50_System_msg_3rd_prs/* --save --filename neurips_plots/big5_zep_50_S3`
+big5_resU2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_big5_test_zephyr-7b-beta_perm_50_User_msg_2nd_prs/* --save --filename neurips_plots/big5_zep_50_U2`
+big5_resU3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_big5_test_zephyr-7b-beta_perm_50_User_msg_3rd_prs/* --save --filename neurips_plots/big5_zep_50_U3`
+
+echo "Zepyr-7B-beta & $(extract_value "$pvq_resS2") & $(extract_value "$pvq_resS3") & $(extract_value "$pvq_resU2") & $(extract_value "$pvq_resU3") & $(extract_value "$hof_resS2") & $(extract_value "$hof_resS3") & $(extract_value "$hof_resU2") & $(extract_value "$hof_resU3") & $(extract_value "$big5_resS2") & $(extract_value "$big5_resS3") & $(extract_value "$big5_resU2") & $(extract_value "$big5_resU3") \\\\"
+exit
+
 ## GPT_instruct JUNE
 # PVQ
 pvq_resU2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_pvq_test_gpt-3.5-turbo-instruct-0914_perm_50_User_msg_2nd_prs/* --save --filename neurips_plots/pvq_gpt35in_50_U2`
@@ -86,7 +130,6 @@ big5_resU2=`python visualization_scripts/bar_viz.py results_neurips/results_nat_
 big5_resU3=`python visualization_scripts/bar_viz.py results_neurips/results_nat_lang_prof_big5_test_gpt-3.5-turbo-instruct-0914_perm_50_User_msg_3rd_prs/* --save --filename neurips_plots/big5_gpt35in_50_U3`
 
 echo "GPT-instruct  & $(extract_value "$pvq_resS2") & $(extract_value "$pvq_resS3") & $(extract_value "$pvq_resU2") & $(extract_value "$pvq_resU3") & $(extract_value "$hof_resS2") & $(extract_value "$hof_resS3") & $(extract_value "$hof_resU2") & $(extract_value "$hof_resU3") & $(extract_value "$big5_resS2") & $(extract_value "$big5_resS3") & $(extract_value "$big5_resU2") & $(extract_value "$big5_resU3") \\\\"
-exit
 
 #echo "\multicolumn{2}{l}{\textit{50 permutations}} \\\\"
 ## GPT35_50 JUNE

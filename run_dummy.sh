@@ -1,5 +1,32 @@
 ##!/bin/bash
 
+
+
+#--engine "up_llama_60b_instruct" \
+#--engine "openassistant_rlhf2_llama30b" \
+#--engine "zephyr-7b-beta" \
+#--engine "zephyr-7b-beta" \
+#--engine "up_llama_60b_instruct" \
+#--engine "up_llama2_70b_instruct_v2" \
+
+#--engine "zephyr-7b-beta" \
+#--engine "openassistant_rlhf2_llama30b" \
+
+python -u evaluate.py \
+--permutations 1 \
+--engine dummy \
+--save_dir results_test/test \
+--data_dir data_pvq \
+--experiment_name pvq_test \
+--ntrain 0 \
+--format code_cpp \
+--no-profile \
+--eval-set test \
+--verbose
+
+#--estimate-gpt-tokens \
+
+
 #"chat"
 #"code_py"
 #"code_cpp"
@@ -24,18 +51,18 @@
 #SAVE_DIR="results_iclr/results_pvq_test_sim_conv_"$ENGINE"_perm_"$PERMUTATIONS"_theme"
 #mkdir -p $SAVE_DIR
 ## conversation
-python -u evaluate.py \
---permutations 50 \
---save_dir results_test/test \
---engine gpt-3.5-turbo-0613 \
---data_dir data_pvq \
---experiment_name test_pvq \
---ntrain 0 \
---format chat \
---no-profile \
---simulate-conversation-theme "chess" \
---system-message \
---verbose
+#python -u evaluate.py \
+#--permutations 50 \
+#--save_dir results_test/test \
+#--engine gpt-3.5-turbo-0613 \
+#--data_dir data_pvq \
+#--experiment_name test_pvq \
+#--ntrain 0 \
+#--format chat \
+#--no-profile \
+#--simulate-conversation-theme "chess" \
+#--system-message \
+#--verbose
 #
 #done
 

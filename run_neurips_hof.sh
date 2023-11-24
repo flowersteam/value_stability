@@ -7,14 +7,6 @@
 #### HOFSTEDE
 ########################
 
-##### Sys: 2nd 3rd | Usr: 2nd 3rd
-# GPT-4 (5) 172.333 & 177.033 & 149.5 & 188.4
-# GPT-3.5 (5) 69.033 & 102.533 & 128.5 & 122.733
-# GPT-3.5 (50) 80.59 & 99.623 & 124.99 & 110.713
-# OA (50)  4.63 & 13.79 & 20.57 & 24.083
-# StableVicuna (50)  & n/a & n/a & -1.76 & 3.01
-# StableLM (50) & -2.367 & 2.743 & 1.943 & 2.287
-
 ## System message , 2nd person
 hof_values_list=(
   "Power Distance"
@@ -26,7 +18,7 @@ hof_values_list=(
 )
 
 message_options=(
-#  "System"
+  "System"
   "User"
 )
 
@@ -55,7 +47,8 @@ person_options=(
 #ENGINE="text-davinci-003"
 ENGINE="dummy"
 
-ENGINE="gpt-3.5-turbo-instruct-0914"
+#ENGINE="gpt-3.5-turbo-instruct-0914"
+ENGINE="zephyr-7b-beta"
 
 PERMUTATIONS=50
 

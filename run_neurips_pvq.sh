@@ -230,13 +230,13 @@ pvq_values_list=(
 )
 
 message_options=(
-#  "System"
+  "System"
   "User"
 )
 
 person_options=(
   "2nd"
-#  "3rd"
+  "3rd"
 )
 
 # RedPajama INCITE Chat and Instruct variants,
@@ -251,8 +251,11 @@ person_options=(
 #ENGINE="gpt-4-0314"
 #ENGINE="gpt-3.5-turbo-0301"
 #ENGINE="gpt-3.5-turbo-0613"
-ENGINE="gpt-3.5-turbo-instruct-0914"
+#ENGINE="gpt-3.5-turbo-instruct-0914"
+ENGINE="zephyr-7b-beta"
 
+#ENGINE="up_llama_60b_instruct"
+#ENGINE="up_llama2_70b_instruct_v2"
 #ENGINE="openassistant_rlhf2_llama30b"
 #ENGINE="stablevicuna"
 #ENGINE="stablelm"
@@ -260,8 +263,6 @@ ENGINE="gpt-3.5-turbo-instruct-0914"
 #ENGINE="rp_incite_7b_instruct"
 #ENGINE="rp_incite_7b_chat"
 
-#ENGINE="up_llama_60b_instruct"
-#ENGINE="up_llama2_70b_instruct_v2"
 
 #ENGINE="curie"
 #ENGINE="babbage"
@@ -275,7 +276,7 @@ for message in "${message_options[@]}"; do
 for person in "${person_options[@]}"; do
 for vals in "${pvq_values_list[@]}"; do
 
-SAVE_DIR="results_icml/results_nat_lang_prof_pvq_test_"$ENGINE"_perm_"$PERMUTATIONS"_"$message"_msg_"$person"_prs"
+SAVE_DIR="results_neurips/results_nat_lang_prof_pvq_test_"$ENGINE"_perm_"$PERMUTATIONS"_"$message"_msg_"$person"_prs"
 
 mkdir -p $SAVE_DIR
 
