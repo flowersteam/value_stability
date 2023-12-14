@@ -23,6 +23,7 @@ def print_dict_values(d):
     print("\t\t".join([f"{np.round(s, 2):.2}" for s in list(d.values()) + [np.mean(list(d.values()))]]))
 
 warnings.filterwarnings('error', category=ConstantInputWarning)
+
 def compute_correlation(scores_1, scores_2, spearman):
     try:
         if spearman:
@@ -185,10 +186,7 @@ def print_correlation_stats(cs):
         "STD": np.std(cs),
         "Min": np.min(cs),
         "Max": np.max(cs),
-        # "Perc 25": np.percentile(cs, 25),
-        # "Perc 75": np.percentile(cs, 75),
-        # "Skew": skew(cs, axis=0, bias=True),
-        # "Kurtosis": kurtosis(cs, axis=0, bias=True)
+
     }
 
     headers = "\t".join(statistics.keys())
@@ -197,18 +195,6 @@ def print_correlation_stats(cs):
     print(f"\t{headers}")
     print(f"\t{values}")
 
-    # print("\tAvg Pearson corr:", np.mean(cs))
-    # print("\tMedian Pearson corr:", np.median(cs))
-    # print()
-    # print("\tSTD Pearson corr:", np.std(cs))
-    # print("\tMin Pearson corr:", np.min(cs))
-    # print("\tMax Pearson corr:", np.max(cs))
-    # print()
-    # print("\tPerc 25 Pearson corr:", np.percentile(cs, 25))
-    # print("\tPerc 75 Pearson corr:", np.percentile(cs, 75))
-    # print()
-    # print("\tSkew:", skew(cs, axis=0, bias=True))
-    # print("\tKurtosis:", kurtosis(cs, axis=0, bias=True))
 
 
 def cohen_d(data_1, data_2):
@@ -331,10 +317,13 @@ def plot_baseline(data, ax, directory, offset, keys_to_plot=None, subj=None, bar
     perm_vals = np.array(perm_vals)
 
     if test_set_name == "pvq_male":
+        # from IPython import embed; embed();
         # centering PVQ
         # todo: fix because this mean is not perfect (should be mean of all answers)
         # this is mean of scores - universalism has 5 questions the rest 4
         perm_vals = perm_vals - np.repeat(perm_vals.mean(1)[:, np.newaxis], 10, axis=1)
+
+        # np.array([[ans[1] for ans in part['pvq_male']] for part in data['answers']])
 
     values = perm_vals.mean(0)
     # errs = perm_vals.std(0)
@@ -446,6 +435,8 @@ def plot_baseline(data, ax, directory, offset, keys_to_plot=None, subj=None, bar
 
 figure_draw = False
 
+rank_order_stability = True
+
 if __name__ == '__main__':
     import argparse
 
@@ -501,32 +492,10 @@ if __name__ == '__main__':
     # chronological order
     directories = args.directories
 
-    for soc_type in ["Hunter-Gatherer", "Horticultural and Pastoral", "Agricultural", "Industrial", "Postindustrial"]:
-        for d in directories:
-            if soc_type in d:
-                directories.append(d)
-
-    if any(["Age" in d for d in directories]):
-        # extract the number after Age:
-        def sort_by_key(directories, key):
-            dir_2_value = {}
-            for dir in directories:
-                value = extract_by_key(dir, key)
-                value = int(value) if value.isdigit() else -1
-                dir_2_value[dir] = value
-
-            # sort by value
-            sorted_directories = sorted(directories, key=dir_2_value.get)
-            return sorted_directories
-
-        directories = sort_by_key(directories, "Age")
-
     # remove directories which contain substrings from the list
     ignore_patterns = []
-    ignore_patterns = ["gen_space", "gen_w_space"]
     print("Ignoring patterns: ", ignore_patterns)
 
-    rank_order_stability = True
 
     for substring in ignore_patterns:
         directories = [d for d in directories if substring not in d]
@@ -559,47 +528,24 @@ if __name__ == '__main__':
         if not os.path.isfile(results_json_path):
             continue
 
-
         with open(results_json_path, 'r') as f:
             data = json.load(f)
         dir_2_data[directory] = data
 
     if test_set_name == "pvq_male":
-        test_set_values = [
-            'Conformity',
-            'Tradition',
-            'Benevolence',
-            'Universalism',
-            'Self-Direction',
-            'Stimulation',
-            'Hedonism',
-            'Achievement',
-            'Power',
-            'Security'
-        ]
+        test_set_values = [ 'Conformity', 'Tradition', 'Benevolence', 'Universalism', 'Self-Direction', 'Stimulation', 'Hedonism', 'Achievement', 'Power', 'Security' ]
     elif test_set_name == "hofstede":
-        test_set_values = [
-            "Power Distance",
-            "Individualism",
-            "Masculinity",
-            "Uncertainty Avoidance",
-            "Long-Term Orientation",
-            "Indulgence",
-        ]
+        test_set_values = [ "Power Distance", "Individualism", "Masculinity", "Uncertainty Avoidance", "Long-Term Orientation", "Indulgence", ]
     elif test_set_name in ["big5_50", "big5_100"]:
-        test_set_values = [
-            "Neuroticism",
-            "Extraversion",
-            "Openness to Experience",
-            "Agreeableness",
-            "Conscientiousness"
-        ]
+        test_set_values = [ "Neuroticism", "Extraversion", "Openness to Experience", "Agreeableness", "Conscientiousness" ]
     elif "college_" in test_set_name:
         test_set_values = ["accuracy"]
 
     primary_value_alignments = []
     mean_vars = []
     labels = []
+
+
     if all(["Primary Values".lower() in d.lower() for d in directories]) or True:
         for dir_i, (dir, data) in enumerate(dir_2_data.items()):
 
@@ -703,21 +649,21 @@ if __name__ == '__main__':
             mean_primary_value_alignment = np.mean(primary_value_alignments)
             print(colored(f"Mean primary value alignment (over all): {round(mean_primary_value_alignment, 3)}", "green"))
 
-        # mean over perspectives
+        # mean over contexts
         mean_var = np.mean(mean_vars)
 
     # all_evaluation_data = (n_persp, n_perm, n_values/traits)
     normalized_evaluation_data = np.array(normalized_evaluation_data)
     notnorm_evaluation_data = np.array(notnorm_evaluation_data)
 
-    # for each value we compute the mean and var over perspectives
+    # for each value we compute the mean and var over contexts
     per_value_persp_mean = notnorm_evaluation_data.mean(axis=0).mean(axis=0)
     # avg over permutation
     per_value_persp_std = notnorm_evaluation_data.std(axis=0).mean(axis=0)
-    # std over both perspectives and permutation
+    # std over both contexts and permutation
     per_value_std_std = notnorm_evaluation_data.std(axis=(0,1))
 
-    print("Per value std of perspectives")
+    print("Per value std of contexts")
     for v_, m_, std_, std_std_ in zip(test_set_values, per_value_persp_mean, per_value_persp_std, per_value_std_std):
         print("{:<15} \tM: {:.2f} \tSD (avg perm): {:.2f} \tSD (sd perm) {:.2f}".format(v_, m_, std_, std_std_))
     print("{:<15} \tM: {:.2f} \tSD (avg perm): {:.2f} \tSD (sd perm) {:.2f}".format(
@@ -728,20 +674,20 @@ if __name__ == '__main__':
     ))
 
 
-    # print(f"Mean (over values) Variance (over perspectives): {mean_variance}")
+    # print(f"Mean (over values) Variance (over contexts): {mean_variance}")
     perm_var = normalized_evaluation_data.var(1).mean()
     # var(permut) -> mean (persp, values)
     assert np.isclose(perm_var, mean_var)
-    print(f"Permutation Var - mean (over values/traits x perspectives) of var (over perm) (*10^3): {round(perm_var * (10 ** 3), 2)}")
+    print(f"Simulated participant Var - mean (over values/traits x contexts) of var (over part) (*10^3): {round(perm_var * (10 ** 3), 2)}")
 
     persp_var = normalized_evaluation_data.mean(1).var(0).mean()
     # mean(permut) -> var (persp) -> mean (values)
-    print(f"Perspective Var - mean (over values/traits) of var (over perspectives) of mean (over perm) (*10^3): {round(persp_var * (10 ** 3), 2)}")
+    print(f"Context Var - mean (over values/traits) of var (over contexts) of mean (over part) (*10^3): {round(persp_var * (10 ** 3), 2)}")
 
 
-    # all_evaluation_data = (n_perspectives, n_permutations, n_values/traits)
+    # all_evaluation_data = (n_contexts, n_permutations, n_values/traits)
     # we do a separate anova for each value/trait
-    assert normalized_evaluation_data.shape[-1] == len(test_set_values)
+    # assert normalized_evaluation_data.shape[-1] == len(test_set_values)
 
     # p limit for the group null-hyp - all perspectivea are the same distribution
 
@@ -762,7 +708,7 @@ if __name__ == '__main__':
 
     for val_i, val in enumerate(test_set_values):
         # value_data = normalized_evaluation_data[:, :, val_i] # value_data = (n_perspectives, n_permutations)
-        value_data = notnorm_evaluation_data[:, :, val_i] # value_data = (n_perspectives, n_permutations)
+        value_data = notnorm_evaluation_data[:, :, val_i] # value_data = (n_contexts, n_permutations)
 
         print(f"\n----------------{val}---------------------")
 
@@ -802,7 +748,6 @@ if __name__ == '__main__':
                     )
 
 
-
     avg_abs_cohens_ds = {k:np.mean(np.abs(v)) for k,v in cohens_ds.items()}
     print(colored("Average absolute cohen's ds:", "green"))
     print_dict_values(avg_abs_cohens_ds)
@@ -828,7 +773,6 @@ if __name__ == '__main__':
         with open(results_json_path, 'r') as f:
             data = json.load(f)
 
-
         offset = -all_bars_width/2 + (i/num_dirs)*all_bars_width
         keys_, sorted_keys, keys_vals = plot_baseline(data, ax, directory, offset, keys_to_plot=keys_to_plot, bar_width=bar_width, min_bar_size=0.05, horizontal_bar=args.horizontal_bar, all_evaluation_data=normalized_evaluation_data)
         orders[dir_to_label(directory)] = sorted_keys
@@ -836,9 +780,7 @@ if __name__ == '__main__':
         assert keys_ == test_set_values
 
         # check that keys are the same in all the baselines
-        assert keys is None or keys_ == keys
         keys = keys_
-
 
     print()
 
@@ -846,15 +788,15 @@ if __name__ == '__main__':
     # RANK ORDER STABILITY CORRELATIONS
     ########################
     if rank_order_stability:
-        print(colored("Pearson Correlation (between perspectives) - permutation order", "green"))
+        print(colored("Pearson Correlation in simulated participant order (between two contexts)", "green"))
         corrs = defaultdict(list)
 
         perm_orders = defaultdict(dict)
 
         for dir_1, dir_2 in combinations(directories, 2):
-
             lab_1 = dir_to_label(dir_1)
             lab_2 = dir_to_label(dir_2)
+            print(f"{lab_1} vs {lab_2}:")
 
             # print(f"{lab_1} vs {lab_2}")
             for key in keys:
@@ -866,58 +808,65 @@ if __name__ == '__main__':
 
                 corrs[key].append(correlation)
 
-                # print(f"\t{key} : {correlation}")
+                # print(f"\t{key} : {correlation:.2f}")
 
-        all_corrs = list(itertools.chain(*corrs.values()))
-        print_aggregated_correlation_stats(all_corrs)
+            print("\t".join(keys + ["Mean"]))
+            mean_ = np.mean([corrs[k][-1] for k in keys])
+            print("\t\t".join([f"{corrs[k][-1]:.2f}" for k in keys] + [f"{mean_:.2f}"]))
+            print(" & ".join([f"{corrs[k][-1]:.2f}" for k in keys] + [f"{mean_:.2f}"]))
+
 
         permutation_order_stabilities = {}
         for key in keys:
             permutation_order_stabilities[key] = np.mean(corrs[key])
 
-        print("\nPermutation order stability due to perspective change")
+        print("\nSimulated participant order stability due to perspective change (avg over context changes)")
         print_dict_values(permutation_order_stabilities)
 
-
-        print("--------------------------------------------------")
-
-        # order of perspectives
-        print(colored("Pearson Correlation (between permutations) - perspective order", "green"))
-        corrs = defaultdict(list)
-        persp_orders = defaultdict(dict)
-
-
-        n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
-
-        assert n_perms == 50
-        assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
-
-        for perm_1, perm_2 in combinations(range(n_perms), 2):
-
-            for key in keys:
-                scores_1 = [dir_2_data[d]["per_permutation_metrics"][perm_1][test_set_name][key] for d in directories]
-                scores_2 = [dir_2_data[d]["per_permutation_metrics"][perm_2][test_set_name][key] for d in directories]
-
-                correlation = compute_correlation(scores_1, scores_2, spearman)
-                corrs[key].append(correlation)
-
+        print("\nAverage over context changes and values")
         all_corrs = list(itertools.chain(*corrs.values()))
         print_aggregated_correlation_stats(all_corrs)
 
-        perspective_order_stabilities = {}
-        for key in keys:
-            perspective_order_stabilities[key] = np.mean(corrs[key])
 
-        print("\nPerspective order stability due to permutation change")
-        print_dict_values(perspective_order_stabilities)
-
-        print(colored("\nAverage rank-order stability due to permutation change", "green"))
-        # average order stability
-        avg_order_stabilities = {}
-        for k in perspective_order_stabilities.keys():
-            avg_order_stabilities[k] = (permutation_order_stabilities[k] + perspective_order_stabilities[k]) / 2
-
-        print_dict_values(avg_order_stabilities)
+        # print("--------------------------------------------------")
+        #
+        # # order of contexts
+        # print(colored("Pearson Correlation (between sim. participant) - perspective order", "green"))
+        # corrs = defaultdict(list)
+        # persp_orders = defaultdict(dict)
+        #
+        #
+        # n_perms = len(dir_2_data[dir_1]["per_permutation_metrics"])
+        #
+        # assert n_perms == 50
+        # assert n_perms == len(dir_2_data[dir_2]["per_permutation_metrics"])
+        #
+        # for perm_1, perm_2 in combinations(range(n_perms), 2):
+        #
+        #     for key in keys:
+        #         scores_1 = [dir_2_data[d]["per_permutation_metrics"][perm_1][test_set_name][key] for d in directories]
+        #         scores_2 = [dir_2_data[d]["per_permutation_metrics"][perm_2][test_set_name][key] for d in directories]
+        #
+        #         correlation = compute_correlation(scores_1, scores_2, spearman)
+        #         corrs[key].append(correlation)
+        #
+        # all_corrs = list(itertools.chain(*corrs.values()))
+        # print_aggregated_correlation_stats(all_corrs)
+        #
+        # perspective_order_stabilities = {}
+        # for key in keys:
+        #     perspective_order_stabilities[key] = np.mean(corrs[key])
+        #
+        # print("\nPerspective order stability due to sim. participant change")
+        # print_dict_values(perspective_order_stabilities)
+        #
+        # print(colored("\nAverage rank-order stability due to permutation change", "green"))
+        # # average order stability
+        # avg_order_stabilities = {}
+        # for k in perspective_order_stabilities.keys():
+        #     avg_order_stabilities[k] = (permutation_order_stabilities[k] + perspective_order_stabilities[k]) / 2
+        #
+        # print_dict_values(avg_order_stabilities)
 
 
     ### IPSATIVE CORRELATIONS
@@ -925,8 +874,8 @@ if __name__ == '__main__':
     print("IPSATIVE CORELATIONS")
     print("--------------------------------------------------")
 
-    # order of perspectives - avg over permutations last (average r)
-    print(colored("Pearson Correlation (between perspectives) - values order (average r)", "green"))
+    # order of contexts - avg over permutations last (average r)
+    print(colored("Pearson Correlation (between contexts) - values order (average r)", "green"))
     corrs = list()
     key_orders = defaultdict(dict)
     persp_scores = defaultdict(lambda : defaultdict(dict))
