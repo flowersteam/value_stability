@@ -7,13 +7,13 @@
 
 #ENGINE="gpt-4-0314"
 #ENGINE="gpt-3.5-turbo-0301"
-##ENGINE="gpt-3.5-turbo-0613"
+ENGINE="gpt-3.5-turbo-0613"
 ##ENGINE="gpt-3.5-turbo-instruct-0914"
 
 #ENGINE="up_llama2_70b_instruct_v2"
 #ENGINE="up_llama_60b_instruct"
 
-ENGINE="zephyr-7b-beta"
+#ENGINE="zephyr-7b-beta"
 
 #ENGINE="openassistant_rlhf2_llama30b"
 ##ENGINE="stablevicuna"
@@ -25,22 +25,24 @@ PERMUTATIONS=50
 
 ####### Formats
 format_options=(
-  "chat"
-  "code_py"
+#  "chat"
+#  "code_py"
   "code_cpp"
-  "conf_toml"
-  "latex"
+#  "conf_toml"
+#  "latex"
 )
 
 for format in "${format_options[@]}"; do
 
-SAVE_DIR="results_iclr/results_pvq_test_format_"$ENGINE"_perm_"$PERMUTATIONS"_format"
+SAVE_DIR="results_plosone/results_pvq_test_gen_qa_"$population_type"_format_"$ENGINE"_perm_"$PERMUTATIONS"_format"
 mkdir -p $SAVE_DIR
 
 python -u evaluate.py \
+--simulated-population-type permutations \
 --permutations $PERMUTATIONS \
 --save_dir $SAVE_DIR \
 --engine "$ENGINE" \
+--generative-qa \
 --data_dir data_pvq \
 --experiment_name pvq_test \
 --ntrain 0 \

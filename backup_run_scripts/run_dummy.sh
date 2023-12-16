@@ -8,18 +8,17 @@
 ##  "chess"
 ##)
 ##
-engines=(
-  "dummy"
-#  "zephyr-7b-beta"
-#  "Mistral-7B-v0.1"
-#  "Mistral-7B-Instruct-v0.1"
-#  "Mistral-7B-Instruct-v0.2"
-#  "Mixtral-8x7B-v0.1-4b"
-#  "Mixtral-8x7B-Instruct-v0.1-4b"
-#  "Mixtral-8x7B-v0.1"
-#  "Mixtral-8x7B-Instruct-v0.1"
-)
-
+##engines=(
+##  "zephyr-7b-beta"
+##  "Mistral-7B-v0.1"
+##  "Mistral-7B-Instruct-v0.1"
+##  "Mistral-7B-Instruct-v0.2"
+##  "Mixtral-8x7B-v0.1-4b"
+##  "Mixtral-8x7B-Instruct-v0.1-4b"
+##  "Mixtral-8x7B-v0.1"
+##  "Mixtral-8x7B-Instruct-v0.1"
+##)
+#
 weathers=(
   "rain"
 #  "sun"
@@ -29,17 +28,16 @@ weathers=(
 #  "blizzard"
 )
 #
-engines=(
-#  "zephyr-7b-beta"
-#  "Mistral-7B-v0.1"
-#  "Mistral-7B-Instruct-v0.1"
-#  "Mistral-7B-Instruct-v0.2"
-#  "Mixtral-8x7B-v0.1"
-  "Mixtral-8x7B-Instruct-v0.1"
-#  "Mixtral-8x7B-v0.1-4b"
-#  "Mixtral-8x7B-Instruct-v0.1-4b"
-#  "zephyr-7b-beta"
-)
+#engines=(
+##  "zephyr-7b-beta"
+##  "Mistral-7B-v0.1"
+##  "Mistral-7B-Instruct-v0.1"
+##  "Mistral-7B-Instruct-v0.2"
+##  "Mixtral-8x7B-v0.1"
+##  "Mixtral-8x7B-Instruct-v0.1"
+##  "Mixtral-8x7B-v0.1-4b"
+##  "Mixtral-8x7B-Instruct-v0.1-4b"
+#)
 #
 #for engine in "${engines[@]}"; do
 #for weather in "${weathers[@]}"; do
@@ -60,25 +58,28 @@ engines=(
 #done
 #done
 
+engines=(
+#  "zephyr-7b-beta"
+  "llama_2_7b"
+)
+
+
 for engine in "${engines[@]}"; do
 for weather in "${weathers[@]}"; do
 
-#--engine "$engine" \
-
 python -u evaluate.py \
 --simulated-population-type tolkien_characters \
---save_dir test/test_dummy \
+--save_dir results_weather_refactor_check/test_weather_"$engine" \
 --engine "$engine" \
 --query-in-reply \
+--system-message \
 --data_dir data_pvq \
 --experiment_name pvq_test \
 --ntrain 0 \
---format conf_toml \
+--format chat \
 --no-profile \
---bracket \
 --weather $weather \
 --verbose
 
-#--system-message \
 done
 done

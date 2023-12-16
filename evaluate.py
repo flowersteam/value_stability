@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 import tiktoken
 
 import torch
-import sys
+import time
+import datetime
 
 from termcolor import colored
 
@@ -28,6 +29,51 @@ import transformers
 
 import json
 import hashlib
+
+def construct_messages(prompt, system_message, messages_conv=None, add_query_str=True):
+
+    set_persona_str = prompt["set_persona_str"]
+    questionnaire_description = prompt["questionnaire_description"]
+
+    user_prompt = f"{questionnaire_description}\n\n" if questionnaire_description else ""
+    user_prompt += prompt["item_str"]
+
+    if add_query_str:
+        user_prompt += "\n"+prompt["query_str"]
+
+    if system_message or messages_conv:
+        # multiple messages
+        messages = []
+        if set_persona_str:
+            messages.append({
+                "role": "system" if system_message else "user",
+                "content": set_persona_str
+            })
+
+        if messages_conv:
+            messages.extend(messages_conv)
+
+        messages.append({"role": "user", "content": user_prompt})
+
+        if not args.system_message:
+            # USER, USER -> USER, AS:"OK", USER
+            messages = fix_alternating_msg_order(messages)
+
+    else:
+
+        full_prompt = f"{set_persona_str}\n\n" if set_persona_str else ""
+
+        if args.separator:
+            full_prompt += "-" * 200 + "\n"
+
+        full_prompt += user_prompt
+
+        messages = [
+            {"role": "user", "content": full_prompt}
+        ]
+
+    return messages
+
 
 def apply_chat_template_for_base_model(messages, add_generation_prompt=True):
     formatted_conversation = ""
@@ -106,9 +152,25 @@ def create_simulated_messages(conv, last="user"):
         raise ValueError("last must be either user or assistant")
 
     sim_conv_messages = [{"role": role, "content": msg} for role, msg in sim_conv]
+
     return sim_conv_messages
 
-def simulate_conversation(args, engine, sim_engine, model_system_message=None, llm_generator=None):
+
+def fix_alternating_msg_order(messages):
+    # roles must iterate, and start with user, so we add fixes
+    if messages[0]['role'] == "system" and messages[1]['role'] == "assistant":
+        # insert empty user message
+        messages.insert(1, {"role": "user", "content": ""})
+
+    if messages[0]['role'] == "user" and messages[1]['role'] == "user":
+        # first message sets the persona, second sets the topic
+        # insert artificial message of the model accepting the persona
+        messages.insert(1, {"role": "assistant", "content": "OK"})
+
+    return messages
+
+
+def simulate_conversation(args, engine, sim_engine, model_set_persona_string=None, llm_generator=None):
     # only simulate the conversation once, use the same in all permutations
     if llm_generator is not None:
         tokenizer, model = llm_generator
@@ -127,13 +189,13 @@ def simulate_conversation(args, engine, sim_engine, model_system_message=None, l
         simulated_conv_messages = create_simulated_messages(conversation, last="user")
 
         if msg_i % 2 == 0:
-            # even -> gpt as gpt
+            # even -> gpt as a persona
             assert simulated_conv_messages[0]['role'] == "user"
 
-            if model_system_message:
+            if model_set_persona_string:
                 simulated_conv_messages = [{
                     "role": "system" if args.system_message else "user",
-                    "content": model_system_message
+                    "content": model_set_persona_string
                 }] + simulated_conv_messages
 
             engine_ = engine
@@ -141,11 +203,14 @@ def simulate_conversation(args, engine, sim_engine, model_system_message=None, l
         else:
             # gpt as human
             assert simulated_conv_messages[0]['role'] == "assistant"
-            simulated_conv_messages = [
-                {"role": "system", "content": f"You are simulating a human using a chatbot."}
-            ] + simulated_conv_messages
+            simulated_conv_messages = [{
+                "role": "system" if args.system_message else "user",
+                "content": f"You are simulating a human using a chatbot. Your every reply must be in one sentence only."
+            }] + simulated_conv_messages
 
             engine_ = sim_engine
+
+        simulated_conv_messages = fix_alternating_msg_order(simulated_conv_messages)
 
         if "gpt" in engine_:
             c = openai.ChatCompletion.create(
@@ -160,6 +225,7 @@ def simulate_conversation(args, engine, sim_engine, model_system_message=None, l
 
         elif "llama_2" in engine_:
             if simulated_conv_messages[1]['role'] == "assistant":
+                raise RuntimeError("This should not be needed anymore?")
                 # llama conversations cannot start with an assistant's message, insert dummy user message
                 simulated_conv_messages.insert(1, {'role': 'user', 'content': ''})
 
@@ -178,7 +244,12 @@ def simulate_conversation(args, engine, sim_engine, model_system_message=None, l
             )
             response = tokenizer.decode(output_seq.sequences[0][len(input_ids[0]):], skip_special_tokens=True)
 
-        elif "zephyr" in engine_:
+        elif "zephyr" in engine_ or "Mixtral" in engine_ or "Mistral" in engine_:
+            
+            # for params: https://huggingface.co/blog/mixtral
+            # for params: https://huggingface.co/HuggingFaceH4/zephyr-7b-alpha
+            # what about mistral?
+
             input_ids = tokenizer.apply_chat_template(simulated_conv_messages, return_tensors="pt", add_generation_prompt=True).to(model.device)
             output_seq = model.generate(
                 input_ids=input_ids,
@@ -192,13 +263,14 @@ def simulate_conversation(args, engine, sim_engine, model_system_message=None, l
             )
             response = tokenizer.decode(output_seq.sequences[0][len(input_ids[0]):], skip_special_tokens=True)
 
-        elif "mistral" in engine_:
-            raise NotImplementedError("Not implemented mistral sim conv.")
-
         else:
             raise NotImplementedError(f"Simulated conversations not implemented for {engine_}")
 
         conversation.append(response)
+
+        print(f"Iter {msg_i}")
+        print_chat_messages(simulated_conv_messages)
+        print(f"--> {response}")
 
         messages_conv = create_simulated_messages(conversation, last="assistant")
         messages_conv_hash = hash_chat_conv(messages_conv)
@@ -249,7 +321,6 @@ print("timestamp:", timestamp)
 import openai
 import numpy as np
 import pandas as pd
-import time
 import sys
 
 from crop import crop
@@ -264,8 +335,6 @@ print("HF TOKEN:", hidden_token )
 
 
 choices = ["A", "B", "C", "D", "E", "F"]
-# choices = ["a", "b", "c", "d", "e", "f"]
-# choices = ["1", "2", "3", "4", "5", "6"]
 
 llama_dir = "/gpfswork/rech/imi/utu57ed/llama/llama_files/"
 
@@ -278,7 +347,6 @@ high_level_cat_dict = {
 
 
 def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
-
 
     if not("pvq" in experiment_name or "hofstede" in experiment_name or "big5" in experiment_name or "mmlu" in experiment_name or "ultimatum" in experiment_name):
         raise NotImplementedError("Experiment name not implemented")
@@ -433,22 +501,18 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
 
             if args.direct_perspective:
                 if args.pretend:
-                    set_perspective_str = f"You pretending to be a person attributing {amount_str} to high {primary_values_str}."
+                    set_persona_str = f"You pretending to be a person attributing {amount_str} to high {primary_values_str}."
                 else:
-                    set_perspective_str = f"You are a person attributing {amount_str} to high {primary_values_str}."
+                    set_persona_str = f"You are a person attributing {amount_str} to high {primary_values_str}."
 
                 if values_description:
-                    set_perspective_str += f" {values_description}"
-                else:
-                    set_perspective_str += "\n"
+                    set_persona_str += f" {values_description}"
 
             else:
                 assert not args.pretend
-                set_perspective_str = f"The following is a questionnaire (with answers) given to a person attributing {amount_str} to high {primary_values_str}."
+                set_persona_str = f"The following is a questionnaire (with answers) given to a person attributing {amount_str} to high {primary_values_str}."
                 if values_description:
-                    set_perspective_str += f" {values_description}"
-                else:
-                    set_perspective_str += "\n"
+                    set_persona_str += f" {values_description}"
 
         else:
 
@@ -470,12 +534,12 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
                 kv_profile_string += f",{high_level_cat_dict[args.profile_dict['Primary values']]}"
 
             if args.direct_perspective:
-                set_perspective_str = "You are a person with the following profile:\n" + \
-                                  f"{kv_profile_string}\n"
+                set_persona_str = "You are a person with the following profile:\n" + \
+                                  f"{kv_profile_string}"
 
             else:
-                set_perspective_str = "The following is a questionnaire (with answers) given to a person with the following profile:\n" + \
-                                  f"{kv_profile_string}\n"
+                set_persona_str = "The following is a questionnaire (with answers) given to a person with the following profile:\n" + \
+                                  f"{kv_profile_string}"
 
         # query string
         if args.direct_perspective:
@@ -486,19 +550,19 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
     elif args.no_profile:
 
         if args.simulated_population_type in ["famous_people"]:
-            set_perspective_str = f"You are {simulated_participant}"
+            set_persona_str = f"You are {simulated_participant}"
         elif args.simulated_population_type in ["lotr_characters"]:
-            set_perspective_str = f"You are {simulated_participant} from the Lord of The Rings."
+            set_persona_str = f"You are {simulated_participant} from the Lord of The Rings."
         elif args.simulated_population_type in ["tolkien_characters"]:
-            set_perspective_str = f"You are {simulated_participant} from J. R. R. Tolkien's Middle-earth legendarium."
+            set_persona_str = f"You are {simulated_participant} from J. R. R. Tolkien's Middle-earth legendarium."
         elif args.simulated_population_type == "anes":
-            set_perspective_str = f"You are a person with the following profile.\n\n'''\n{simulated_participant}\n'''"
+            set_persona_str = f"You are a person with the following profile.\n\n'''\n{simulated_participant}'''"
         elif args.simulated_population_type == "llm_personas":
-            set_perspective_str = f"You are a person with the following profile.\n\n'''\n{simulated_participant}\n'''"
+            set_persona_str = f"You are a person with the following profile.\n\n'''\n{simulated_participant}'''"
         elif args.simulated_population_type == "user_personas":
-            set_perspective_str = f"You are talking to a person with the following profile.\n\n'''\n{simulated_participant}\n'''"
+            set_persona_str = f"You are talking to a person with the following profile.\n\n'''\n{simulated_participant}'''"
         elif args.simulated_population_type == "permutations":
-            set_perspective_str = ""
+            set_persona_str = ""
         else:
             raise ValueError("Unknown population type")
 
@@ -511,15 +575,15 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
                 "sandstorm": "There is a severe sandstorm and a heat wave.",
                 "blizzard": "There is a severe blizzard.",
             }
-            set_perspective_str = set_perspective_str.rstrip() + f"\n{weather_dict[args.weather]}"
+            set_persona_str = set_persona_str.rstrip() + f"\n{weather_dict[args.weather]}"
 
         if args.format == "code_py":
-            query_str = """# Choose the answer\nanswer = answers_dict[\""""
+            query_str = """# Choose the answer\nanswer = answers_dict[\"("""
 
             questionnaire_description = f"""query = \"\"\"\n{questionnaire_description}"""
 
         elif args.format == "code_cpp":
-            query_str = "\t// Choose the answer\n\tstd::string answer = answers_dict[\""
+            query_str = "\t// Choose the answer\n\tstd::string answer = answers_dict[\"("
 
             questionnaire_description = "#include <iostream>\n" + \
             "#include <string>\n" + \
@@ -529,7 +593,7 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
             questionnaire_description
 
         elif args.format == "conf_toml":
-            query_str = "answer = "
+            query_str = "answer = ("
 
             if questionnaire_description_empty:
                 questionnaire_description = \
@@ -543,7 +607,7 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
             if args.query_prompt:
                 query_str = args.query_prompt
             else:
-                query_str = "Answer:"
+                query_str = "Answer: ("
 
             questionnaire_description = \
                 "\\documentclass{article}\n" + \
@@ -557,7 +621,10 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
             if args.query_prompt:
                 query_str = args.query_prompt
             else:
-                query_str = "Answer:"
+                if args.bracket:
+                    query_str = "Answer: ("
+                else:
+                    query_str = "Answer:"
 
         else:
             raise ValueError(f"Undefined format {args.format}.")
@@ -568,24 +635,13 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
     # only no_profile with code formats change the questionnaire description
     assert (not questionnaire_description_empty == questionnaire_description) or (args.no_profile and args.format != "chat")
 
-    if args.system_message:
-        prompts = {
-            "system": f"{set_perspective_str}".rstrip(),  # remove newline from the end
-            "intro": f"{questionnaire_description}\n\n" if not questionnaire_description_empty else questionnaire_description,
-            "query": f"{query_str}",
-        }
+    prompt_skeleton = {
+        "set_persona_str": set_persona_str,  # remove newline from the end
+        "questionnaire_description": questionnaire_description,
+        "query_str": f"{query_str}",
+    }
 
-    else:
-        if args.separator and not args.direct_perspective:
-            set_perspective_str += "\n" + "-"*200
-
-        prompts = {
-            "intro": (f"{set_perspective_str}\n\n" if set_perspective_str else "") +
-                     (f"{questionnaire_description}\n\n" if not questionnaire_description_empty else questionnaire_description),  # if questionnaire_description is empty don't add newlines
-            "query": f"{query_str}",
-        }
-
-    return prompts
+    return prompt_skeleton
 
 
 def dummy_lprobs_from_generation(response, answers, label_2_text_option_dict):
@@ -655,7 +711,8 @@ def format_subject(subject):
 
 
 def format_example(df, idx, subject, experiment_name, args, permutations_dict, simulated_participant, include_answer=True):
-    prompt = df.iloc[idx, 0]  # add question to prompt
+    # an item contains a question and suggested answers
+    item_str = df.iloc[idx, 0]
     k = df.shape[1] - 2
 
     # extract options
@@ -670,58 +727,88 @@ def format_example(df, idx, subject, experiment_name, args, permutations_dict, s
         options_strings.append(op_str)
 
         num_options += 1
-    
-    if args.format in ["code_py"]:
-        prompt += "\n\"\"\"\n\n"
 
-        prompt += "# Define the answers dictionary\n"
-        prompt += "answers_dict = {\n"
+    if args.format == "chat":
+        for ch in choices[:num_options]:
+
+            if args.bracket:
+                item_str += "\n({}) {}".format(ch, options_strings[permutations_dict[ch]])
+            else:
+                item_str += "\n{}. {}".format(ch, options_strings[permutations_dict[ch]])
+
+    elif args.format == "code_py":
+        item_str += "\n\"\"\"\n\n"
+
+        item_str += "# Define the answers dictionary\n"
+        item_str += "answers_dict = {\n"
 
         for ch in choices[:num_options]:
 
-            prompt += "\t\"{}.\": \"{}\",\n".format(ch, options_strings[permutations_dict[ch]])
-        prompt += "}\n"
+            if args.bracket:
+                item_str += "\t\"({})\": \"{}\",\n".format(ch, options_strings[permutations_dict[ch]])
+            else:
+                item_str += "\t\"{}.\": \"{}\",\n".format(ch, options_strings[permutations_dict[ch]])
 
-    elif args.format in ["code_cpp"]:
-        prompt += "\n)\";\n\n"
+        item_str += "}\n"
 
-        prompt += "\t// Define the answers dictionary\n"
-        prompt += "\tstd::map<std::string, std::string> answers_dict = {\n"
+    elif args.format == "code_cpp":
+        item_str += "\n)\";\n\n"
 
-        for ch in choices[:num_options]:
-            prompt += "\t\t{\""+ch+".\", \""+options_strings[permutations_dict[ch]]+"\"},\n"
-        prompt += "\t};\n"
-
-    elif args.format in ["conf_toml"]:
-
-        prompt = prompt.replace("\n", "\n# ")
-        prompt = f"# {prompt}"
+        item_str += "\t// Define the answers dictionary\n"
+        item_str += "\tstd::map<std::string, std::string> answers_dict = {\n"
 
         for ch in choices[:num_options]:
-            prompt += f"\n# {ch}. {options_strings[permutations_dict[ch]]}"
 
-    elif args.format in ["latex"]:
-        prompt += "\n\\begin{enumerate}[label=\\Alph*.]\n"
+            if args.bracket:
+                item_str += "\t\t{\"("+ch+")\", \""+options_strings[permutations_dict[ch]]+"\"},\n"
+            else:
+                item_str += "\t\t{\"" + ch + ".\", \"" + options_strings[permutations_dict[ch]] + "\"},\n"
+
+        item_str += "\t};\n"
+
+    elif args.format == "conf_toml":
+
+        item_str = item_str.replace("\n", "\n# ")
+        item_str = f"# {item_str}"
 
         for ch in choices[:num_options]:
-            prompt += f"\t\\item {options_strings[permutations_dict[ch]]}\n"
+            if args.bracket:
+                item_str += f"\n# ({ch}) {options_strings[permutations_dict[ch]]}"
+            else:
+                item_str += f"\n# {ch}. {options_strings[permutations_dict[ch]]}"
 
-        prompt += "\\end{enumerate}"
+    elif args.format == "latex":
+        if args.bracket:
+            item_str += "\n\\begin{enumerate}[label=(\\Alph*)]\n"
+        else:
+            item_str += "\n\\begin{enumerate}[label=\\Alph*.]\n"
+
+        for ch in choices[:num_options]:
+            item_str += f"\t\\item {options_strings[permutations_dict[ch]]}\n"
+
+        item_str += "\\end{enumerate}"
 
     else:
-        for ch in choices[:num_options]:
-            prompt += "\n{}. {}".format(ch, options_strings[permutations_dict[ch]])
+        raise ValueError(f"Undefined textual format {args.format}.")
 
-    prompt_skeleton = get_prompt_skeleton(subject=subject, experiment_name=experiment_name, args=args, simulated_participant=simulated_participant)
+    prompt = get_prompt_skeleton(
+        subject=subject, experiment_name=experiment_name, args=args, simulated_participant=simulated_participant
+    )
+
+    prompt["item_str"] = item_str
 
     # query_in_reply will put query in the models response, if not add it to prompt here
-    if not args.query_in_reply:
-        prompt += "\n"+prompt_skeleton["query"]
+
+    # if not args.query_in_reply:
+    #     item_str += "\n"+prompt_skeleton["query"]
 
     if include_answer:
-        prompt += " {}\n\n".format(df.iloc[idx, k + 1])
+        prompt["answer"] = df.iloc[idx, k + 1]
+        # item_str += " {}\n\n".format(df.iloc[idx, k + 1])
 
-    return prompt, num_options, prompt_skeleton
+    # return prompt, num_options, prompt_skeleton
+
+    return prompt, num_options
 
 
 # def gen_prompt(train_df, subject, experiment_name, args, permutations_dict, simulated_participant, k=-1):
@@ -753,6 +840,7 @@ def hash_chat_conv(msgs_conv):
 def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generator=None, simulated_participant=None):
     cors = []
     all_probs = []
+    all_lprobs = []
     all_answers = []
     all_generations = []
 
@@ -761,9 +849,6 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
     messages_conv_hash = None
 
     gpt_token_counter = 0
-
-    if args.simulate_conversation_theme and not args.system_message:
-        raise NotImplementedError("simulated conversation is only implemented with system message.")
 
     for i in range(test_df.shape[0]):
         if i % 10 == 0:
@@ -775,7 +860,8 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
 
         # get prompt and make sure it fits
         k = args.ntrain
-        prompt_end, n_options, prompt_skeleton = format_example(
+        # prompt_end, n_options, prompt_skeleton = format_example(
+        prompt, n_options = format_example(
             test_df, i,
             subject=subject,
             experiment_name=args.experiment_name,
@@ -785,26 +871,10 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             simulated_participant=simulated_participant
         )
 
-        if k == 0:
-            prompt_intro = prompt_skeleton['intro']
-
-        else:
-            raise DeprecationWarning("In-context examples are not supported.")
-            # prompt_intro = gen_prompt(
-            #     dev_df, subject,
-            #     experiment_name=args.experiment_name,
-            #     k=k,
-            #     args=args,
-            #     permutations_dict=permutations_dict,
-            #     simulated_participant=simulated_participant
-            # )
-
-        prompt = prompt_intro + prompt_end
 
         # all questions have the same number of options
         assert test_df.shape[1]-2 == n_options
         answers = choices[:n_options]
-
 
         label = test_df.iloc[i, test_df.shape[1]-1]
         assert label in answers + ["undef"]
@@ -812,112 +882,84 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
         if args.estimate_gpt_tokens:
             encoder = tiktoken.encoding_for_model('gpt-3.5-turbo-0301')
             assert encoder == tiktoken.encoding_for_model('gpt-4-0314')
-            gpt_token_counter += len(encoder.encode(prompt_skeleton.get("system", "")+prompt)) + 1  # prompt + 1 generated token
+            gpt_token_counter += len(encoder.encode(" ".join(prompt.values())))
+
+        if args.simulate_conversation_theme:
+
+            set_persona_str = prompt["set_persona_str"]
+            if messages_conv is None:
+                print("SIMULATING CONVERSATION")
+                messages_conv, messages_conv_hash = simulate_conversation(
+                    args=args,
+                    engine=engine,
+                    sim_engine=engine,
+                    model_set_persona_string=set_persona_str,
+                    llm_generator=llm_generator
+                )
+            else:
+                print("LOADING CACHED CONVERSATION")
+                assert hash_chat_conv(messages_conv) == messages_conv_hash
 
         if engine == "dummy":
-            if args.system_message:
-                print("SYSTEM:", prompt_skeleton.get("system", None))
 
-            print("PROMPT:", prompt)
+            messages = construct_messages(
+                prompt=prompt,
+                system_message=args.system_message,
+                messages_conv=messages_conv if args.simulate_conversation_theme else None,
+                add_query_str=not args.query_in_reply,
+            )
+
             if args.query_in_reply:
-                print(prompt_skeleton['query'])
+                messages += [{
+                    "role": "assistant",
+                    "content": prompt['query_str'] if args.bracket else f"{prompt['query_str']} "
+                }]
 
-            generation = random.choice([f"{c}. ba" for c in answers])
+            print_chat_messages(messages)
+
+            generation = random.choice([f"{c}" for c in answers])
             lprobs = dummy_lprobs_from_generation(generation, answers, label_2_text_option_dict)
 
         elif engine == "interactive":
             # ask the user to choose
-            if args.system_message:
-                print("SYSTEM:", prompt_skeleton.get("system", None))
-
-            if args.query_in_reply:
-                prompt += f"{prompt_skeleton['query']} "
-
             generation = input(f"{prompt}")
 
             lprobs = dummy_lprobs_from_generation(generation, answers, label_2_text_option_dict)
 
         elif engine in ["gpt-3.5-turbo-0301", "gpt-4-0314", "gpt-3.5-turbo-0613", "gpt-4-0613", "gpt-3.5-turbo-1106-preview", "gpt-4-1106-preview"]:
 
+            if args.query_in_reply:
+                raise ValueError("Can't use query_in_reply with gpt models.")
+
             while True:
                 try:
-                    if args.query_in_reply:
-                        raise ValueError("Can't use query_in_reply with gpt")
 
-                    if args.system_message:
-                        model_system_message = prompt_skeleton.get("system", None)
-
-                        # system message
-                        if args.simulate_conversation_theme:
-
-                            if messages_conv is None:
-                                print("Simulating conversation")
-                                messages_conv, messages_conv_hash = simulate_conversation(
-                                    args=args,
-                                    engine=engine,
-                                    sim_engine=engine,
-                                    model_system_message=model_system_message,
-                                )
-                            else:
-                                print("Loading cached conversation")
-                                assert hash_chat_conv(messages_conv) == messages_conv_hash
-
-                            messages = []
-                            if model_system_message:
-                                messages.append({"role": "system", "content": model_system_message})
-
-                            messages = messages + messages_conv + [{"role": "user", "content": prompt}]
-
-                            # estimate tokens
-                            encoder = tiktoken.encoding_for_model(engine)
-                            print("n_tokens:", len(encoder.encode(" ".join([m["content"] for m in messages[:-1]]))))
-
-                        else:
-                            messages = []
-                            if model_system_message:
-                                messages.append({"role": "system", "content": model_system_message})
-
-                            messages.append({"role": "user", "content": prompt})
-
-                    else:
-                        if args.simulate_conversation_theme:
-                            raise NotImplementedError("noisy conversation not implemented for user message")
-
-                        # user message
-                        messages = [
-                            {"role": "user", "content": prompt}
-                        ]
+                    messages = construct_messages(
+                        prompt=prompt,
+                        system_message=args.system_message,
+                        messages_conv=messages_conv if args.simulate_conversation_theme else None,
+                        add_query_str=True,
+                    )
 
                     print_chat_messages(messages)
-                    if args.generative_qa:
-                        c = openai.ChatCompletion.create(
-                            model=engine,
-                            messages=messages,
-                            max_tokens=args.max_tokens,
-                            n=1,
-                            # temperature=1,
-                            request_timeout=30,
-                            top_p=0.9,
-                        )
-                        generation = c['choices'][0]['message']['content']
+                    encoder = tiktoken.encoding_for_model(engine)
 
-                    else:
-                        encoder = tiktoken.encoding_for_model(engine)
-                        # get the encoding for each letter in choices
-                        logit_bias = {encoder.encode(c)[0]: 100 for c in answers}
+                    # get the encoding for each letter in choices
+                    logit_bias = {encoder.encode(c)[0]: 100 for c in answers}
 
-                        c = openai.ChatCompletion.create(
-                            model=engine,
-                            messages=messages,
-                            max_tokens=1,
-                            n=1,
-                            temperature=0,
-                            logit_bias=logit_bias,
-                            request_timeout=30,
-                        )
-                        generation = c['choices'][0]['message']['content']
+                    c = openai.ChatCompletion.create(
+                        model=engine,
+                        messages=messages,
+                        max_tokens=1,
+                        n=1,
+                        temperature=0,
+                        logit_bias=logit_bias,
+                        request_timeout=30,
+                    )
+                    generation = c['choices'][0]['message']['content']
 
                     break
+
                 except Exception as e:
                     print(e)
                     print("Pausing")
@@ -926,10 +968,100 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
 
             lprobs = dummy_lprobs_from_generation(generation, answers, label_2_text_option_dict)
 
-        elif engine in ["gpt-3.5-turbo-instruct-0914", "text-davinci-003", "text-davinci-002", "text-davinci-001", "curie", "babbage", "ada"]:
+        elif engine in ["zephyr-7b-beta"] or "Mistral-7B" in engine or "Mixtral" in engine:
 
-            if args.generative_qa:
-                raise NotImplementedError("Generative QA not implemented for OpenAI non-ChatGPT models.")
+            if ("Mistral" in engine or "Mixtral" in engine) and args.system_message:
+                raise ValueError(f"{engine} does not support system messages")
+
+            tokenizer, model = llm_generator
+
+            messages = construct_messages(
+                prompt=prompt,
+                system_message=args.system_message,
+                messages_conv=messages_conv if args.simulate_conversation_theme else None,
+                add_query_str=not args.query_in_reply,
+            )
+
+            formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+            if args.query_in_reply:
+                if args.bracket:
+                    # no whitespace after
+                    formatted_prompt += f"{prompt['query_str']}"
+                else:
+                    formatted_prompt += f"{prompt['query_str']} "
+
+            print(f"************************\nFORMATTED PROMPT:\n{formatted_prompt}\n******************")
+
+            inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
+
+            output = model.generate(
+                **inputs,
+                max_new_tokens=1,
+                # temperature=0.0001,
+                do_sample=False,
+                top_p=1.0,
+                return_dict_in_generate=True,
+                output_scores=True
+            )
+            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
+
+        elif engine in [
+            *[f"llama_2_{s}_chat" for s in ["7b", "13b", "70b"]],
+            *[f"llama_2_{s}" for s in ["7b", "13b", "70b"]]
+        ]:
+
+            tokenizer, model = llm_generator
+
+            messages = construct_messages(
+                prompt=prompt,
+                system_message=args.system_message,
+                messages_conv=messages_conv if args.simulate_conversation_theme else None,
+                add_query_str=not args.query_in_reply,
+            )
+
+            if "chat" in args.engine:
+                formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+            else:
+
+                if args.custom_chat_template:
+                    # Op 1: custom format
+                    formatted_prompt = apply_chat_template_for_base_model(messages, add_generation_prompt=True)
+
+                else:
+                    # OP 2: monkey patch
+                    formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+            if args.query_in_reply:
+
+                if args.bracket:
+                    # no whitespace after
+                    formatted_prompt += f"{prompt['query_str']}"
+                else:
+                    formatted_prompt += f"{prompt['query_str']} "
+
+            print(f"************************\nFORMATTED PROMPT:{formatted_prompt}\n******************")
+
+            inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
+
+            # token match
+            output = model.generate(
+                **inputs,
+                max_new_tokens=1,
+                # do_sample=True,
+                # temperature=0.5,
+                # top_p=0.9,
+                # top_k=50,
+                # num_beams=1,
+                # repetition_penalty=1.2,
+                return_dict_in_generate=True,
+                output_scores=True
+            )
+
+            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
+
+        elif engine in ["gpt-3.5-turbo-instruct-0914"]:
 
             if args.simulate_conversation_theme:
                 raise NotImplementedError("noisy conversation not implemented for user message")
@@ -967,362 +1099,6 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
             # extract logprobs
             lprobs = [float(option_scores[a]) for a in answers]
 
-        elif engine in ["zephyr-7b-beta"] or "Mistral-7B" in engine or "Mixtral" in engine:
-
-            tokenizer, model = llm_generator
-
-            if args.system_message:
-                if "Mistral-7B-instruct" in engine:
-                    raise ValueError("Mistral does not support system messages")
-
-                model_system_message = prompt_skeleton.get("system", None)
-
-                if args.simulate_conversation_theme:
-
-                    if messages_conv is None:
-                        print("SIMULATING CONVERSATION")
-                        messages_conv, messages_conv_hash = simulate_conversation(
-                            args=args,
-                            engine=engine,
-                            sim_engine=engine,
-                            model_system_message=model_system_message,
-                            llm_generator=llm_generator
-                        )
-                    else:
-                        print("LOADING CACHED CONVERSATION")
-                        assert hash_chat_conv(messages_conv) == messages_conv_hash
-
-                    messages = []
-                    if model_system_message:
-                        messages.append({"role": "system", "content": model_system_message})
-
-                    messages = messages + messages_conv + [{"role": "user", "content": prompt}]
-
-                else:
-                    messages = []
-                    if model_system_message:
-                        messages.append({"role": "system", "content": model_system_message})
-
-                    messages.append({"role": "user", "content": prompt})
-
-            else:
-                if args.simulate_conversation_theme:
-                    raise NotImplementedError("noisy conversation not implemented for user message")
-
-                messages = [{"role": "user", "content": prompt}]
-
-            formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-
-            if args.query_in_reply:
-                formatted_prompt += f"{prompt_skeleton['query']} "
-
-            print(f"************************\nFORMATTED PROMPT:{formatted_prompt}\n******************")
-            inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
-
-            if args.generative_qa:
-                output_seq = model.generate(
-                    **inputs,
-                    max_new_tokens=args.max_tokens,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_k=50,
-                    top_p=0.95,
-                    return_dict_in_generate=True,
-                    output_scores=True
-                )
-                generation = tokenizer.decode(output_seq.sequences[0][len(inputs.input_ids[0]):])
-                lprobs = dummy_lprobs_from_generation(generation, answers, label_2_text_option_dict)
-
-            else:
-                output = model.generate(
-                    **inputs,
-                    max_new_tokens=1,
-                    # temperature=0.0001,
-                    do_sample=False,
-                    top_p=1.0,
-                    return_dict_in_generate=True,
-                    output_scores=True
-                )
-                option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
-
-        elif engine in ["openassistant_rlhf2_llama30b"]:
-            if args.generative_qa:
-                raise NotImplementedError("Generative QA not implemented for OpenAI non-ChatGPT models.")
-
-            if args.simulate_conversation_theme:
-                raise NotImplementedError("noisy conversation not implemented for user message")
-
-            if args.system_message:
-                prompt = f'<prefix>{prompt_skeleton["system"]}</prefix><human>{prompt}<bot>'
-
-            else:
-                # prompt = f"<prefix></prefix><human>{prompt}<bot>"
-                prompt = f'<human>{prompt}<bot>'
-
-            tokenizer, model = llm_generator
-
-            inputs = tokenizer(prompt, return_tensors='pt').to('cuda')
-            del inputs["token_type_ids"]
-            start_time = time.time()
-            output = model.generate(
-                **inputs,
-                max_new_tokens=1,
-                do_sample=False,
-                temperature=0.001,
-                top_p=1.0,
-                return_dict_in_generate=True,
-                output_scores=True
-            )
-            print("inference time:", time.time()-start_time)
-
-            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
-
-            # todo: remove if assert doesn't fail
-            option_scores_ = { ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers }
-            generation_ = max(option_scores, key=option_scores.get)
-            lprobs_ = [float(option_scores[a]) for a in answers]
-
-            assert (option_scores_, generation_, lprobs_) == (option_scores, generation, lprobs)
-
-        elif engine in ["stablevicuna"]:
-            # todo: combine with stablelm
-            if args.simulate_conversation_theme:
-                raise NotImplementedError("noisy conversation not implemented for user message")
-
-            if args.generative_qa:
-                raise NotImplementedError("Generative QA not implemented for OpenAI non-ChatGPT models.")
-
-            if args.system_message:
-                raise NotImplementedError("System message not implemented.")
-
-            else:
-                prompt = f"""\
-                ### Human: {prompt}
-                ### Assistant:\
-                """
-
-            tokenizer, model = llm_generator
-
-            inputs = tokenizer(prompt, return_tensors='pt').to('cuda')
-            output = model.generate(
-                **inputs,
-                max_new_tokens=1,
-                do_sample=False,
-                temperature=0.001,
-                top_p=1.0,
-                return_dict_in_generate=True,
-                output_scores=True
-            )
-            if args.simulate_conversation_theme:
-                raise NotImplementedError("noisy conversation not implemented for user message")
-
-            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
-            option_scores_ = { ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers }
-            generation_ = max(option_scores, key=option_scores.get)
-            lprobs_ = [float(option_scores[a]) for a in answers]
-            assert (option_scores_, generation_, lprobs_) == (option_scores, generation, lprobs)
-
-        elif engine in [
-            *[f"llama_2_{s}_chat" for s in ["7b", "13b", "70b"]],
-            *[f"llama_2_{s}" for s in ["7b", "13b", "70b"]]
-        ]:
-
-            tokenizer, model = llm_generator
-
-            if args.system_message:
-                model_system_message = prompt_skeleton.get("system", None)
-
-                if args.simulate_conversation_theme:
-
-                    if messages_conv is None:
-                        print("SIMULATING CONVERSATION")
-                        messages_conv, messages_conv_hash = simulate_conversation(
-                            args=args,
-                            engine=engine,
-                            sim_engine=engine,
-                            model_system_message=model_system_message,
-                            llm_generator=llm_generator
-                        )
-                    else:
-                        print("LOADING CACHED CONVERSATION")
-                        assert hash_chat_conv(messages_conv) == messages_conv_hash
-
-                    messages = []
-                    if model_system_message:
-                        messages.append({"role": "system", "content": model_system_message})
-
-                    messages = messages + messages_conv + [{"role": "user", "content": prompt}]
-
-                else:
-                    messages = []
-                    if model_system_message:
-                        messages.append({"role": "system", "content": model_system_message})
-
-                    messages.append({"role": "user", "content": prompt})
-
-            else:
-                if args.simulate_conversation_theme:
-                    raise NotImplementedError("noisy conversation not implemented for user message")
-
-                messages = [
-                    {"role": "user", "content": prompt}
-                ]
-
-            if "chat" in args.engine:
-                formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-
-            else:
-
-                if args.custom_chat_template:
-                    # Op 1: custom format
-                    formatted_prompt = apply_chat_template_for_base_model(messages, add_generation_prompt=True)
-
-                else:
-                    # OP 2: monkey patch
-                    formatted_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-
-            if args.query_in_reply:
-                formatted_prompt += f"{prompt_skeleton['query']} "
-
-            print(f"************************\nFORMATTED PROMPT:{formatted_prompt}\n******************")
-
-            inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
-            if args.generative_qa:
-
-                # string match
-                output_seq = model.generate(
-                    **inputs,
-                    max_new_tokens=args.max_tokens,
-                    do_sample=True,
-                    top_p=0.9,
-                    top_k=50,
-                    temperature=0.6,
-                    repetition_penalty=1.2,
-                    num_beams=1,
-                    return_dict_in_generate=True,
-                    output_scores=True
-                )
-                generation = tokenizer.decode(output_seq.sequences[0][len(inputs.input_ids[0]):])
-                lprobs = dummy_lprobs_from_generation(generation, answers, label_2_text_option_dict)
-
-            else:
-
-                # token match
-                output = model.generate(
-                    **inputs,
-                    max_new_tokens=1,
-                    # do_sample=True,
-                    # temperature=0.5,
-                    # top_p=0.9,
-                    # top_k=50,
-                    # num_beams=1,
-                    # repetition_penalty=1.2,
-                    return_dict_in_generate=True,
-                    output_scores=True
-                )
-
-                option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
-
-        elif engine in ["up_llama_60b_instruct", "up_llama2_70b_instruct_v2"]:
-            if args.simulate_conversation_theme:
-                raise NotImplementedError("noisy conversation not implemented for user message")
-
-            if args.system_message:
-                prompt = f"### System:\n{prompt_skeleton['system']}\n\n### User:\n{prompt}\n\n### Assistant:\n"
-            else:
-                prompt = f"### User:\n{prompt}\n\n### Assistant:\n"
-
-            tokenizer, model = llm_generator
-
-            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-            if "token_type_ids" in inputs:
-                del inputs["token_type_ids"]
-
-            streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-
-            output = model.generate(
-                **inputs,
-                streamer=streamer,
-                use_cache=True,
-                max_new_tokens=1,
-                # temperature=0.0001,
-                do_sample=False,
-                top_p=1.0,
-                return_dict_in_generate=True,
-                output_scores=True
-            )
-            # output_text = tokenizer.decode(output[0], skip_special_tokens=True)
-
-            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
-
-        elif engine in ["rp_incite_7b_instruct", "rp_incite_7b_chat"]:
-            if args.system_message:
-                raise NotImplementedError("System message not implemented for RedPajama.")
-
-            if args.simulate_conversation_theme:
-                raise NotImplementedError("noisy conversation not implemented for user message")
-
-            tokenizer, model = llm_generator
-
-            inputs = tokenizer(prompt, return_tensors='pt').to(model.device)
-
-            output = model.generate(
-                **inputs, max_new_tokens=1, do_sample=False, temperature=0.0001, top_p=1.0, top_k=1,
-                return_dict_in_generate=True, output_scores=True
-            )
-
-            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
-            option_scores_ = {
-                ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers
-            }
-            generation_ = max(option_scores, key=option_scores.get)
-            lprobs_ = [float(option_scores[a]) for a in answers]
-            assert (option_scores_, generation_, lprobs_) == (option_scores, generation, lprobs)
-
-        elif engine in ["stablelm"]:
-            if args.simulate_conversation_theme:
-                raise NotImplementedError("noisy conversation not implemented for user message")
-
-            if args.generative_qa:
-                raise NotImplementedError("Generative QA not implemented for OpenAI non-ChatGPT models.")
-
-            tokenizer, model = llm_generator
-
-            class StopOnTokens(StoppingCriteria):
-                def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-                    stop_ids = [50278, 50279, 50277, 1, 0]
-                    for stop_id in stop_ids:
-                        if input_ids[0][-1] == stop_id:
-                            return True
-                    return False
-
-            if args.system_message:
-                system_prompt = prompt_skeleton["system"]
-                user_prompt = prompt
-                prompt = f"<|SYSTEM|>{system_prompt}<|USER|>{user_prompt}<|ASSISTANT|>"
-
-            else:
-                # prompt = f"<|SYSTEM|><|USER|>{prompt}<|ASSISTANT|>"
-                prompt = f"<|USER|>{prompt}<|ASSISTANT|>"
-
-            inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
-
-            output = model.generate(
-                **inputs,
-                max_new_tokens=1,
-                temperature=0.001,
-                do_sample=False,
-                stopping_criteria=StoppingCriteriaList([StopOnTokens()]),
-                return_dict_in_generate=True,
-                output_scores=True
-            )
-
-            option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
-            option_scores_ = { ans: output.scores[0][0, tokenizer.convert_tokens_to_ids(ans)] for ans in answers }
-            generation_ = max(option_scores, key=option_scores.get)
-            lprobs_ = [float(option_scores[a]) for a in answers]
-            assert (option_scores_, generation_, lprobs_) == (option_scores, generation, lprobs)
-
         else:
             raise ValueError(f"Not recognized model {engine}.")
 
@@ -1336,6 +1112,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
 
         cors.append(cor)
 
+        all_lprobs.append(lprobs)
         all_probs.append(probs)
         all_answers.append(pred)
         all_generations.append(generation)
@@ -1344,6 +1121,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
     cors = np.array(cors)
 
     all_probs = np.array(all_probs)
+    all_lprobs = np.array(all_lprobs)
     print("Average accuracy {:.3f} - {}".format(acc, subject))
 
     if args.estimate_gpt_tokens:
@@ -1355,7 +1133,7 @@ def eval(args, subject, engine, dev_df, test_df, permutations_dict, llm_generato
         print(f"\tbabagge ~ {0.0005 *gpt_token_counter/1000:.4f} dollars".format(args))
         print(f"\tada ~ {0.0004 *gpt_token_counter/1000:.4f} dollars".format(args))
 
-    return cors, acc, all_probs, all_answers, all_generations, gpt_token_counter
+    return cors, acc, all_probs, all_lprobs, all_answers, all_generations, gpt_token_counter
 
 def remove_prefix(s, pref):
     if s.startswith(pref):
@@ -1459,7 +1237,6 @@ def main(args):
 
     gpt_tokens_total = 0
 
-
     if engine in ["zephyr-7b-beta"]:
         print("Loading zephyr-7b-beta")
         tokenizer = AutoTokenizer.from_pretrained("HuggingFaceH4/zephyr-7b-beta", cache_dir=hf_cache_dir, device_map="auto")
@@ -1492,8 +1269,8 @@ def main(args):
         "Mixtral-8x7B-v0.1-4b",
         "Mixtral-8x7B-Instruct-v0.1-4b",
     ]:
-        print(f"Loading {engine}")
         model_name = engine.rstrip("-4b")
+        print(f"Loading {engine} -> {model_name}")
         tokenizer = AutoTokenizer.from_pretrained(f"mistralai/{model_name}", cache_dir=hf_cache_dir, device_map="auto")
         model = AutoModelForCausalLM.from_pretrained(f"mistralai/{model_name}", device_map="auto", cache_dir=hf_cache_dir, load_in_4bit=True)
 
@@ -1524,114 +1301,6 @@ def main(args):
 
         llm_generator = (tokenizer, model)
 
-    elif engine in ["up_llama_60b_instruct", "up_llama2_70b_instruct_v2"]:
-
-        if engine == "up_llama2_70b_instruct_v2":
-            tokenizer = AutoTokenizer.from_pretrained("upstage/Llama-2-70b-instruct-v2", cache_dir=hf_cache_dir)
-            model = AutoModelForCausalLM.from_pretrained(
-                "upstage/Llama-2-70b-instruct-v2",
-                device_map="auto",
-                torch_dtype=torch.float16,
-                load_in_8bit=True, cache_dir=hf_cache_dir,
-                rope_scaling={"type": "dynamic", "factor": 2}  # allows handling of longer inputs
-            )
-
-        elif engine == "up_llama_60b_instruct":
-
-            tokenizer = AutoTokenizer.from_pretrained("upstage/llama-65b-instruct", cache_dir=hf_cache_dir)
-            model = AutoModelForCausalLM.from_pretrained(
-                "upstage/llama-65b-instruct",
-                device_map="auto",
-                torch_dtype=torch.float16,
-                load_in_8bit=True, cache_dir=hf_cache_dir,
-                rope_scaling={"type": "dynamic", "factor": 2}  # allows handling of longer inputs
-            )
-
-        llm_generator = (tokenizer, model)
-
-
-    elif engine in ["falcon-40b", "falcon-40b-instruct"]:
-        raise NotImplementedError("Falcon not implemented.")
-        model_name = f"tiiuae/{engine}"
-
-        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=hf_cache_dir)
-        model = AutoModelForCausalLM.from_pretrained(model_name, cache_dir=hf_cache_dir, trust_remote_code=True)
-        # todo: internet needed -> problem with JZ
-
-        pipeline = transformers.pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
-            device_map="auto",
-        )
-        sequences = pipeline(
-            "Girafatron is obsessed with giraffes, the most glorious animal on the face of this Earth. Giraftron believes all other animals are irrelevant when compared to the glorious majesty of the giraffe.\nDaniel: Hello, Girafatron!\nGirafatron:",
-            max_length=200,
-            do_sample=True,
-            top_k=10,
-            num_return_sequences=1,
-            eos_token_id=tokenizer.eos_token_id,
-        )
-        for seq in sequences:
-            print(f"Result: {seq['generated_text']}")
-
-    elif engine in ["rp_incite_7b_instruct", "rp_incite_7b_chat"]:
-
-        MIN_TRANSFORMERS_VERSION = '4.25.1'
-        # check transformers version
-        assert transformers.__version__ >= MIN_TRANSFORMERS_VERSION, f'Please upgrade transformers to version {MIN_TRANSFORMERS_VERSION} or higher.'
-
-        if engine == "rp_incite_7b_instruct":
-
-            # init
-            tokenizer = AutoTokenizer.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct", cache_dir=hf_cache_dir)
-            model = AutoModelForCausalLM.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct", torch_dtype=torch.float16, cache_dir=hf_cache_dir)
-
-            # tokenizer = AutoTokenizer.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct")
-            # model = AutoModelForCausalLM.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Instruct", torch_dtype=torch.float16)
-            model = model.to('cuda:0')
-
-
-        elif engine == "rp_incite_7b_chat":
-
-            # init
-            tokenizer = AutoTokenizer.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Chat", cache_dir=hf_cache_dir)
-            model = AutoModelForCausalLM.from_pretrained("togethercomputer/RedPajama-INCITE-7B-Chat", torch_dtype=torch.float16, cache_dir=hf_cache_dir)
-            model = model.to('cuda:0')
-
-        else:
-            raise ValueError("Unknown model.")
-
-        llm_generator = (tokenizer, model)
-
-
-    elif engine in ["stablelm", "stablevicuna", "openassistant_rlhf2_llama30b"]:
-
-        if engine == "stablelm":
-            print("Loading stable-lm-tuned-alpha-7b.")
-            tokenizer = AutoTokenizer.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=hf_cache_dir)
-            model = AutoModelForCausalLM.from_pretrained("StabilityAI/stablelm-tuned-alpha-7b", cache_dir=hf_cache_dir)
-
-        elif engine == "stablevicuna":
-            print("Loading stable-vicuna-13b.")
-            tokenizer = AutoTokenizer.from_pretrained("/gpfswork/rech/imi/utu57ed/hf_stable_vicuna_13b")
-            model = AutoModelForCausalLM.from_pretrained("/gpfswork/rech/imi/utu57ed/hf_stable_vicuna_13b")
-
-        elif engine == "openassistant_rlhf2_llama30b":
-            print("Loading openassistant-rlhf2-llama30b.")
-            tokenizer = AutoTokenizer.from_pretrained("/gpfswork/rech/imi/utu57ed/oasst-rlhf-2-llama-30b-7k-steps-xor/oasst-rlhf-2-llama-30b-7k-steps")
-            print("tokenizer loaded")
-            start_time = time.time()
-            model = AutoModelForCausalLM.from_pretrained("/gpfswork/rech/imi/utu57ed/oasst-rlhf-2-llama-30b-7k-steps-xor/oasst-rlhf-2-llama-30b-7k-steps")
-            print(f"Model loaded (time={time.time() - start_time})")
-
-        else:
-            raise NotImplementedError(f"{engine} not supported")
-
-        model.half().cuda()
-        llm_generator = (tokenizer, model)
 
     else:
         llm_generator = None
@@ -1713,6 +1382,7 @@ def main(args):
 
     # list because of permutations
     subj_acc = [{} for _ in range(len(simulated_population))]
+    subj_lprobs = [{} for _ in range(len(simulated_population))]
     subj_len = [{} for _ in range(len(simulated_population))]
     metrics = [{} for _ in range(len(simulated_population))]
     answers = [{} for _ in range(len(simulated_population))]
@@ -1748,7 +1418,7 @@ def main(args):
             # for sim_part_i, permutations_dict in enumerate(permutations_dicts):
             print(f"Simulated participant {sim_part_i}")
 
-            cors, acc, probs, preds, gens, gpt_tokens = eval(
+            cors, acc, probs, lprobs, preds, gens, gpt_tokens = eval(
                 args=args,
                 subject=subject,
                 engine=engine,
@@ -1762,6 +1432,7 @@ def main(args):
             gpt_tokens_total += gpt_tokens
 
             subj_acc[sim_part_i][subject] = acc
+            subj_lprobs[sim_part_i][subject] = lprobs
             subj_len[sim_part_i][subject] = len(test_df)
             preds_values = np.vectorize(map_choice_to_number)(preds, permutations_dict)
             answers[sim_part_i][subject] = list(zip(preds, map(int, preds_values)))
@@ -1769,9 +1440,6 @@ def main(args):
 
             if "hofstede" in args.data_dir:
                 assert "hofstede" in args.experiment_name
-
-                # preds_values_ = np.vectorize(map_choice_to_number)(preds, permutations_dict)
-                # assert all(preds_values_ == preds_values)
 
                 # from the manual (question indices start from 1)
                 # power_distance = 35(m07 – m02) + 25(m20 – m23) + C(pd)
@@ -1827,10 +1495,6 @@ def main(args):
 
             elif "pvq" in args.data_dir:
                 assert "pvq" in args.experiment_name
-
-                # pvq is evaluated by averaging scored based on different values
-                # preds_values_ = np.vectorize(map_choice_to_number)(preds, permutations_dict)
-                # assert all(preds_values_ == preds_values)
 
                 profile_values_idx_json = os.path.join(os.path.join(args.data_dir, "raw"), "values.json")
                 with open(profile_values_idx_json) as f:
@@ -1931,6 +1595,7 @@ def main(args):
                 "simulated_population": simulated_population,
                 "generations": generations,
                 "answers": answers,
+                "lprobs": lprobs,
                 **{
                     "params": vars(args)
                 }
@@ -1994,7 +1659,25 @@ if __name__ == "__main__":
     parser.add_argument("--separator", action="store_true")
     parser.add_argument("--add-high-level-categories", action="store_true")
     parser.add_argument("--pretend", action="store_true")
+    parser.add_argument("--bracket", action="store_true")
     args = parser.parse_args()
+
+    assert args.bracket
+
+    # check parameters for models
+    if "gpt" in args.engine and "instruct" not in args.engine:
+        assert args.system_message
+        assert not args.query_in_reply
+        assert args.direct_perspective
+
+    if ("llama_2" in args.engine and "chat" in args.engine) or "zephyr" in args.engine:
+        assert args.system_message
+        assert args.query_in_reply
+
+    if "Mistral" in args.engine or "Mixtral" in args.engine:
+        assert not args.system_message
+        assert args.query_in_reply
+
 
     profile = {}
     if args.profile:
@@ -2036,6 +1719,8 @@ if __name__ == "__main__":
         if args.query_in_reply:
             raise ValueError("Can't use query in reply with gpt models")
 
+    if args.generative_qa:
+        raise DeprecationWarning("Generative QA not implemented.")
 
     if args.profile:
         assert args.natural_language_profile
@@ -2049,5 +1734,9 @@ if __name__ == "__main__":
     if "pvq" in args.data_dir and args.profile:
         assert args.add_high_level_categories
 
+    start_time = time.time()
     main(args)
+    end_time = time.time()
+    print("Elapsed time:", str(datetime.timedelta(seconds=end_time-start_time)).split(".")[0])
+
 
