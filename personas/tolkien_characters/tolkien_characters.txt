@@ -1,6 +1,5 @@
 Gandalf
 Gollum
-Smeagol
 Sméagol
 Aragorn
 Sauron
@@ -29,8 +28,8 @@ Beorn
 Arwen
 Halbarad
 Isildur
-Fingon
-Fingolfin
+Gothmog (Balrog)
+Lungorthin
 Celebrimbor
 Gil-galad
 Meriadoc Brandybuck
@@ -46,7 +45,6 @@ Thorin Oakenshield
 Peregrin Took
 Thingol
 Gríma Wormtongue
-Watcher in the Water
 Eärendil
 Elwing
 Lúthien
@@ -56,7 +54,7 @@ Idril
 Finwë
 Míriel
 Ungoliant
-Bard the Bowman
+Thuringwethil
 Melian
-Balin
+Durin's Bane
 Gimli

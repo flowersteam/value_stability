@@ -5,3 +5,4 @@ data_*
 .idea
 results/
 personas/ANES/*
+.cache/*

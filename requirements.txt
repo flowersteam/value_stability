@@ -89,7 +89,7 @@ tiktoken==0.5.1
 matplotlib
 pandas
 torch==1.13.1
-accelerate==0.18.0
+# accelerate==0.18.0
 sentencepiece==0.1.98
 protobuf==3.20.1
 # matplotlib==3.7.1
@@ -97,3 +97,5 @@ protobuf==3.20.1
 # pandas==2.0.1
 # selenium==4.9.1
 # bs4
+scipy==1.11.0
+accelerate==0.24.0

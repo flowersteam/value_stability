@@ -16,11 +16,6 @@ pip install -i https://test.pypi.org/simple/ bitsandbytes
 conda install cudatoolkit -y
 ```
 
-For openassistant create new env 
-```
-conda create --name llm_persp_oa --clone llm_persp
-pip install git+https://github.com/huggingface/transformers@d04ec99bec8a0b432fc03ed60cea9a1a20ebaf3c
-```
 
 [//]: # (or)
 
