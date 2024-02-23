@@ -2,7 +2,9 @@ visualizations/
 dummy_viz/
 models/
 data_*
+logs/*
 .idea
 results/
 personas/ANES/*
 .cache/*
+*__pycache__*
