@@ -12,15 +12,16 @@ import scipy.stats as st
 from termcolor import cprint
 
 def model_2_family(model):
-    if "llama_2" in model:
+    model_lower = model.lower()
+    if "llama_2" in model_lower:
         return "LLaMa-2"
-    elif "Mixtral" in model:
+    elif "mixtral" in model_lower:
         return "Mixtral"
-    elif "Mistral" in model or "zephyr" in model:
+    elif "mistral" in model_lower or "zephyr" in model_lower:
        return "Mistral"
-    elif "phi" in model:
+    elif "phi" in model_lower:
         return "Phi"
-    elif "Qwen" in model:
+    elif "qwen" in model_lower:
         return "Qwen"
     elif "dummy":
         return "dummy"
@@ -53,10 +54,19 @@ def legend_without_duplicate_labels(ax, loc="best", title=None, legend_loc=None)
     # axs[plt_i].legend(bbox_to_anchor=legend_loc, loc="best")
     ax.legend(*zip(*unique), loc=loc, title=title, fontsize=legend_fontsize, title_fontsize=legend_fontsize, bbox_to_anchor=legend_loc)
 
+def get_all_ipsative_corrs_str(default_profile):
 
-def run_analysis(eval_script_path, data_dir, assert_n_contexts=None, insert_dummy_participants=False):
+    if default_profile is not None:
+        all_ipsative_corrs_str = "All_Ipsative_corrs"
+    else:
+        all_ipsative_corrs_str = "All_Ipsative_corrs_default_profile"
+
+    return all_ipsative_corrs_str
+
+
+def run_analysis(eval_script_path, data_dir, assert_n_contexts=None, insert_dummy_participants=False, default_profile=None, paired_data_dir=None):
     # run evaluation script
-    command = f"python {eval_script_path} --result-json-stdout {'--assert-n-dirs ' + str(assert_n_contexts) if assert_n_contexts else ''} {'--insert-dummy' if insert_dummy_participants else ''} {data_dir}/*/*"
+    command = f"python {eval_script_path} --result-json-stdout {'--assert-n-dirs ' + str(assert_n_contexts) if assert_n_contexts else ''} {'--insert-dummy' if insert_dummy_participants else ''} {f'--default-profile {default_profile}' if default_profile is not None else ''} {data_dir}/*/* {f'--paired-dirs {paired_data_dir}/*/*' if paired_data_dir is not None else ''}"
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
 
@@ -64,7 +74,9 @@ def run_analysis(eval_script_path, data_dir, assert_n_contexts=None, insert_dumm
 
     # parse json outputs
     results = json.loads(stdout)
-    results["All_Ipsative_corrs"]=np.array(results["All_Ipsative_corrs"])
+
+    all_ipsative_corrs_str = get_all_ipsative_corrs_str(default_profile)
+    results[all_ipsative_corrs_str] = np.array(results[all_ipsative_corrs_str])
 
     return results
 
@@ -156,6 +168,8 @@ add_title = False
 
 bars_as_plot = False
 
+label_ = None
+
 experiment_dirs = [
     "sim_conv_pvq_permutations_msgs",
     # "sim_conv_pvq_tolkien_characters_seeds",
@@ -179,12 +193,18 @@ metric = "Ipsative"
 
 
 # figure_name = "tolk_ro_t"
+figure_name = "paired_tolk_ro_uni"
+# figure_name = "paired_tolk_ro_ben"
+# figure_name = "paired_tolk_ro_pow"
+# figure_name = "paired_tolk_ro_ach"
 # figure_name = "fam_ro_t"
-figure_name = "don_t"
+# figure_name = "don_t"
 # figure_name = "no_pop_ips"
 # figure_name = "tolk_ro_msgs"
 # figure_name = "tolk_ips_msgs"
 # figure_name = "no_pop_msgs"
+# figure_name = "tolk_ips_msgs_default_prof"
+# figure_name = "llama_sys_no_sys"
 
 rotatation_x_labels = 0
 
@@ -199,8 +219,21 @@ title_fontsize = 18
 interval_figsize_x = 8
 interval_figsize_y = 7
 
-show_human_change = False
+round_y_lab = 1
+
+show_human_change = True
 legend_loc = None
+
+legend_title = "LLM families"
+
+default_profile = None
+
+add_tolkien_ro_curve = False
+add_tolkien_ipsative_curve = False
+
+left_adjust = None
+paired_dir = None
+y_label = None
 
 if figure_name == "no_pop_msgs":
     experiment_dirs = ["sim_conv_pvq_permutations_msgs"]
@@ -210,6 +243,7 @@ if figure_name == "no_pop_msgs":
     bar_plots = False
     models = plot_models
     metric = "Ipsative"
+    human_change_xloc = -1.0
     msgs_ro_tolk = False
 
     min_y, max_y = -0.1, 1.0  # IPS
@@ -222,6 +256,39 @@ if figure_name == "no_pop_msgs":
     interval_figsize_x = 14
     interval_figsize_y = 7
 
+elif figure_name == "tolk_ips_msgs_default_prof":
+
+    # Messages on Ips Tolkien
+    models = ["1_msgs", "3_msgs", "5_msgs", "7_msgs", "9_msgs"]
+    experiment_dirs = ["sim_conv_pvq_tolkien_characters_msgs/Mixtral-8x7B-Instruct-v0.1"]
+    seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
+    y_label = "Stability"
+
+    bar_plots = True
+    bars_as_plot = True
+    add_tolkien_ro_curve = True
+    add_tolkien_ipsative_curve = False
+    msgs_ro_tolk = True
+    legend_title = None
+    legend_fontsize = 14
+
+    label_ = "Ipsative stability (with\n  the default profile)"
+
+    metric = "Ipsative_default_profile"
+    default_profile = "results/sim_conv_pvq_permutations_msgs/Mixtral-8x7B-Instruct-v0.1/9_msgs/_seed/results_sim_conv_permutations_Mixtral-8x7B-Instruct-v0.1/pvq_test_Mixtral-8x7B-Instruct-v0.1_data_pvq_pvq_auto__permutations_50_permute_options_5_no_profile_True_format_chat___2024_02_14_20_47_27"
+    add_legend = True
+    human_change_xloc = 6.8
+    show_human_change = False
+
+    min_y, max_y = 0.3, 0.8  # IPS
+    round_y_lab = 2
+
+    left_adjust = 0.15
+
+    interval_figsize_x = 6
+    interval_figsize_y = 6
+
+
 elif figure_name == "no_pop_ips":
     experiment_dirs = ["sim_conv_pvq_permutations_msgs"]
     seed_strings = ["3_msgs/_seed"]  # ips (only n=3)
@@ -230,6 +297,7 @@ elif figure_name == "no_pop_ips":
     bar_plots = True
     add_legend = True
     metric = "Ipsative"
+    human_change_xloc = -1.0
     msgs_ro_tolk = False
 
     show_human_change = True
@@ -262,6 +330,7 @@ elif figure_name == "tolk_ro_t":
     add_legend = True
     add_title = True
     metric = "Rank-Order"
+    human_change_xloc = 6.8
     msgs_ro_tolk = False
     show_human_change = True
     legend_fontsize = 22
@@ -271,6 +340,53 @@ elif figure_name == "tolk_ro_t":
     yticks_fontsize = 18
 
     min_y, max_y = -0.1, 0.8  # RO
+
+elif figure_name.startswith("paired_tolk_ro"):
+
+    if figure_name.endswith("uni"):
+        value_to_pair = "Universalism"
+    elif figure_name.endswith("ben"):
+        value_to_pair = "Benevolence"
+    elif figure_name.endswith("pow"):
+        value_to_pair = "Power"
+    elif figure_name.endswith("ach"):
+        value_to_pair = "Achievement"
+    else:
+        raise ValueError(f"Undefined figure name: {figure_name}")
+
+    # y_label = f"Rank-Order stability\n{value_to_pair}-Donation"
+    y_label = f"Rank-Order stability\nwith donation"
+
+    experiment_dirs = ["sim_conv_pvq_tolkien_characters_seeds"]
+    paired_dir = "sim_conv_tolkien_donation_tolkien_characters_seeds"
+
+    seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
+
+    add_tolkien_ipsative_curve = False
+    bar_plots = True
+
+    if value_to_pair == "Universalism":
+        add_legend = True
+        legend_fontsize = 20
+    else:
+        add_legend = False
+
+    add_title = False
+    metric = "Rank-Order"
+    msgs_ro_tolk = False
+    show_human_change = False
+    human_change_xloc = 6.8
+    rotatation_x_labels = 90
+
+    xticks_fontsize = 15
+    yticks_fontsize = 18
+
+    left_adjust = 0.2
+
+    if value_to_pair in ["Power", "Achievement"]:
+        min_y, max_y = -0.5, 0.1
+    else:
+        min_y, max_y = -0.1, 0.5
 
 
 elif figure_name == "fam_ro_t":
@@ -284,6 +400,7 @@ elif figure_name == "fam_ro_t":
     add_legend = False
     add_title = True
     metric = "Rank-Order"
+    human_change_xloc = 6.8
     msgs_ro_tolk = False
 
     show_human_change = True
@@ -304,6 +421,7 @@ elif figure_name == "don_t":
     add_legend = False
     add_title = True
     metric = "Rank-Order"
+    human_change_xloc = 6.8
     msgs_ro_tolk = False
     rotatation_x_labels = 90
 
@@ -324,6 +442,7 @@ elif figure_name == "tolk_ro_msgs":
     msgs_ro_tolk = True
 
     metric = "Rank-Order"
+    human_change_xloc = 6.8
     interval_figsize_x = 14
     interval_figsize_y = 7
 
@@ -346,16 +465,65 @@ elif figure_name == "tolk_ips_msgs":
     msgs_ro_tolk = True
 
     metric = "Ipsative"
+    human_change_xloc = 6.8
 
     min_y, max_y = -0.1, 1  # IPS
+
+elif figure_name == "llama_sys_no_sys":
+
+    experiment_dirs = [
+        # "sim_conv_pvq_tolkien_characters_seeds",
+        # "sim_conv_pvq_tolkien_characters_seeds_NO_SYSTEM",
+        ""
+    ]
+
+    seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
+    models = [
+        "sim_conv_pvq_tolkien_characters_seeds/llama_2_7b_chat",
+        "sim_conv_pvq_tolkien_characters_seeds/llama_2_13b_chat",
+        "sim_conv_pvq_tolkien_characters_seeds/llama_2_70b_chat",  # 2 gpu
+        "sim_conv_pvq_tolkien_characters_seeds_NO_SYSTEM/llama_2_7b_chat",
+        "sim_conv_pvq_tolkien_characters_seeds_NO_SYSTEM/llama_2_13b_chat",
+        "sim_conv_pvq_tolkien_characters_seeds_NO_SYSTEM/llama_2_70b_chat",  # 2 gpu
+    ]
+    x_label_map = {
+        "sim_conv_pvq_tolkien_characters_seeds/llama_2_7b_chat": "llama_2_7b_chat_sys",
+        "sim_conv_pvq_tolkien_characters_seeds/llama_2_13b_chat": "llama_2_13b_chat_sys",
+        "sim_conv_pvq_tolkien_characters_seeds/llama_2_70b_chat": "llama_2_70b_chat_sys",  # 2 gpu
+        "sim_conv_pvq_tolkien_characters_seeds_NO_SYSTEM/llama_2_7b_chat": "llama_2_7b_chat_no_sys",
+        "sim_conv_pvq_tolkien_characters_seeds_NO_SYSTEM/llama_2_13b_chat": "llama_2_13b_chat_no_sys",
+        "sim_conv_pvq_tolkien_characters_seeds_NO_SYSTEM/llama_2_70b_chat": "llama_2_70b_chat_no_sys",  # 2 gpu
+    }
+
+    add_tolkien_ipsative_curve = False
+    bar_plots = True
+    add_legend = False
+    add_title = True
+    metric = "Rank-Order"
+    human_change_xloc = -0.5
+    msgs_ro_tolk = False
+    show_human_change = True
+    legend_fontsize = 22
+    rotatation_x_labels = 90
+    show_human_changea = False
+
+    xticks_fontsize = 15
+    yticks_fontsize = 18
+
+    min_y, max_y = -0.1, 0.8  # RO
 else:
     raise ValueError(f"Unknown figure name {figure_name}.")
 
-
+if y_label is None:
+    y_label = metric + " stability (r)"
 
 if add_tolkien_ipsative_curve:
     with open("tolkien_ipsative_curve_cache.json", "r") as f:
         tolkien_ipsative_curve = json.load(f)
+
+if add_tolkien_ro_curve:
+    with open("tolkien_ro_curve_cache.json", "r") as f:
+        tolkien_ro_curve = json.load(f)
 
 confidence = 0.95
 
@@ -402,6 +570,7 @@ for experiment_dir in experiment_dirs:
                 continue
 
             data_dir = os.path.join("results", experiment_dir, model, seed_str)
+            paired_data_dir = os.path.join("results", paired_dir, model, seed_str)
 
             if len(glob.glob(data_dir+"/*/*/*.json")) < 2:
                 print(f"No evaluation found at {data_dir}.")
@@ -413,7 +582,7 @@ for experiment_dir in experiment_dirs:
                 eval_script_path = "./visualization_scripts/data_analysis.py"
                 with open(eval_script_path, 'rb') as file_obj: eval_script = str(file_obj.read())
                 hash = hashlib.sha256("-".join(
-                    [eval_script, inspect.getsource(run_analysis), checksumdir.dirhash(data_dir), str(assert_n_contexts), str(insert_dummy_participants)]
+                    [eval_script, inspect.getsource(run_analysis), checksumdir.dirhash(data_dir), str(assert_n_contexts), str(insert_dummy_participants), str(default_profile), str(paired_data_dir)]
                 ).encode()).hexdigest()
                 cache_path = f".cache/{hash}.json"
 
@@ -425,7 +594,7 @@ for experiment_dir in experiment_dirs:
 
                 else:
                     print("\t\tEvaluating")
-                    eval_data = run_analysis(eval_script_path=eval_script_path, data_dir=data_dir, assert_n_contexts=assert_n_contexts, insert_dummy_participants=insert_dummy_participants)
+                    eval_data = run_analysis(eval_script_path=eval_script_path, data_dir=data_dir, assert_n_contexts=assert_n_contexts, insert_dummy_participants=insert_dummy_participants, default_profile=default_profile, paired_data_dir=paired_data_dir)
 
                 with open(cache_path, 'w') as fp:
 
@@ -439,7 +608,8 @@ for experiment_dir in experiment_dirs:
 
             data[experiment_dir][model][seed_str] = eval_data.copy()
 
-            metrs_str = {k: np.round(v, 2) for k,v in data[experiment_dir][model][seed_str].items() if k != "All_Ipsative_corrs"}
+            keys_to_print = ["Mean-Level", "Rank-Order", "Ipsative"]
+            metrs_str = {k: np.round(v, 2) for k, v in data[experiment_dir][model][seed_str].items() if k in keys_to_print}
             print(f"\t\t- {seed_str} : {metrs_str}")
 
 
@@ -487,21 +657,23 @@ if num_cols == 1:
 else:
     axs = axs.flatten()
 
+all_ipsative_corrs_str = get_all_ipsative_corrs_str(default_profile)
+
 for plt_i, experiment_dir in enumerate(experiment_dirs):
 
     if show_human_change:
 
-        if metric == "Rank-Order":
-            xloc = 6.8
+        if default_profile:
+            metric_human = "Ipsative"
         else:
-            xloc = -1.0
+            metric_human = metric
 
-        axs[plt_i].axhline(y=human_change_10_12[metric], color=human_data_color, linestyle=':', zorder=0)
-        axs[plt_i].text(xloc, human_change_10_12[metric] + 0.01, "Human value stability between ages 10 and 12",
+        axs[plt_i].axhline(y=human_change_10_12[metric_human], color=human_data_color, linestyle=':', zorder=0)
+        axs[plt_i].text(human_change_xloc, human_change_10_12[metric_human] + 0.01, "Human value stability between ages 10 and 12",
                         fontsize=human_data_fontsize, color=human_data_color)
 
-        axs[plt_i].axhline(y=human_change_20_28[metric], color=human_data_color, linestyle=':', zorder=0)
-        axs[plt_i].text(xloc, human_change_20_28[metric] + 0.01, "Human value stability between ages 20 and 28",
+        axs[plt_i].axhline(y=human_change_20_28[metric_human], color=human_data_color, linestyle=':', zorder=0)
+        axs[plt_i].text(human_change_xloc, human_change_20_28[metric_human] + 0.01, "Human value stability between ages 20 and 28",
                         fontsize=human_data_fontsize, color=human_data_color)
 
         # axs[plt_i].scatter(models, [models_mmlu[m] for m in models], marker="x", s=5)
@@ -513,7 +685,7 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
         ).mean(axis=1)
         mmlus = [models_mmlu[m] for m in models_to_scatter]
 
-        axs[plt_i].set_ylabel(f"{metric}", fontsize=y_label_fontsize)
+        axs[plt_i].set_ylabel(y_label, fontsize=y_label_fontsize)
         axs[plt_i].set_xlabel("MMLU score", fontsize=20)
         for m,s, mod in zip(mmlus, stabs, models_to_scatter):
             axs[plt_i].text(m+0.005, s+0.005, mod, fontsize=8)
@@ -545,17 +717,23 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
 
     elif bar_plots:
 
-        plt.subplots_adjust(top=0.90, bottom=0.5, hspace=0.8)
+        plt.subplots_adjust(left=left_adjust, top=0.90, bottom=0.5, hspace=0.8)
         xs = models
-        scores = np.array([[data[experiment_dir][model][seed_str][metric] for seed_str in seed_strings] for model in models])
+        xs = [x_label_map.get(x, x) for x in xs]
+
+        if figure_name.startswith("paired_tolk_ro"):
+            scores = np.array([[data[experiment_dir][model][seed_str]['Proxy_stability'][value_to_pair] for seed_str in seed_strings] for model in models])
+        else:
+            scores = np.array([[data[experiment_dir][model][seed_str][metric] for seed_str in seed_strings] for model in models])
+
         ys = scores.mean(axis=1)
 
         # get the right side of the CI
         if "sim_conv_pvq_permutations_msgs" in experiment_dir:
-            assert len(seed_strings) == 1 # you should use plots, not bars
+            assert len(seed_strings) == 1  # you should use plots, not bars
             # [n_modelx, cont_pairs, pop_size]
-            all_corrs = np.array([data[experiment_dir][model][seed_strings[0]]["All_Ipsative_corrs"] for model in models])
-            all_corrs = all_corrs.mean(1) # mean over pairs
+            all_corrs = np.array([data[experiment_dir][model][seed_strings[0]][all_ipsative_corrs_str] for model in models])
+            all_corrs = all_corrs.mean(1)  # mean over pairs
 
             c2 = np.array([st.t.interval(confidence, len(a) - 1, loc=np.mean(a), scale=st.sem(a))[1] for a in all_corrs])
             tick_len = c2 - ys  # half the conf interval
@@ -564,8 +742,9 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
             n_msgs = models
             # [n_msgs, n_seeds, n_pairs, n_personas]
             all_corrs = np.array([[
-                data[experiment_dir][n_msg][seed_str]["All_Ipsative_corrs"] for seed_str in seed_strings
+                data[experiment_dir][n_msg][seed_str][all_ipsative_corrs_str] for seed_str in seed_strings
             ] for n_msg in n_msgs])
+
             all_corrs = all_corrs.mean(2)  # mean over context pairs
 
             # SI over what -> seed and personas
@@ -577,7 +756,6 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
             c2 = np.array([st.t.interval(confidence, len(a) - 1, loc=np.mean(a), scale=st.sem(a))[1] for a in all_corrs])
             tick_len = c2 - ys  # half the conf interval
 
-
         else:
             c2 = np.array([st.t.interval(confidence, len(a) - 1, loc=np.mean(a), scale=st.sem(a))[1] for a in scores])
             tick_len = c2 - ys  # half the conf interval
@@ -587,17 +765,46 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
 
         if bars_as_plot:
             # used for msgs
-            axs[plt_i].plot(xs, ys)
+            axs[plt_i].plot(xs, ys, label=label_)
             axs[plt_i].fill_between(xs, ys - tick_len, ys + tick_len, alpha=0.3)
 
-            if metric == "Ipsative":
+            if default_profile is not None and figure_name == "tolk_ips_msgs_default_prof":
+
+                # load ro
+                if add_tolkien_ro_curve:
+                    cprint("Loading Rank-order Tolkien Mixtral-Instruct stability from CACHE", "red")
+
+                    xs = np.array(tolkien_ro_curve["xs"])
+                    xs = [x_label_map.get(x, x) for x in xs]
+                    ys = np.array(tolkien_ro_curve["ys"])
+                    shade_len = np.array(tolkien_ro_curve["tick_len"])
+
+                    lab_ = "Rank-Order stability\n  (between contexts)"
+                    col_ = "black"
+                    axs[plt_i].plot(xs, ys, label=lab_, color=col_)
+                    axs[plt_i].fill_between(xs, ys - shade_len, ys + shade_len, alpha=0.3, color=col_)
+
+                if add_tolkien_ipsative_curve:
+                    cprint("Loading Ipsative Tolkien Mixtral-Instruct stability from CACHE", "red")
+
+                    xs = np.array(tolkien_ipsative_curve["xs"])
+                    xs = [x_label_map.get(x, x) for x in xs]
+                    ys = np.array(tolkien_ipsative_curve["ys"])
+                    shade_len = np.array(tolkien_ipsative_curve["tick_len"])
+
+                    lab_ = "Ipsative stability (between contexts)"
+                    col_ = "brown"
+                    axs[plt_i].plot(xs, ys, label=lab_, color=col_, zorder=0)
+                    axs[plt_i].fill_between(xs, ys - shade_len, ys + shade_len, alpha=0.3, color=col_, zorder=0)
+
+            if metric == "Ipsative" and figure_name == "tolk_ips_msgs":
                 tolkien_ipsative_curve = {
                     "xs": list(xs),
                     "ys": list(ys),
                     "tick_len": list(tick_len),
                 }
 
-                cprint("SAVING Ipsative Rank-order Tolkien Mixtral-Instruct stability to CACHE", "red")
+                cprint("SAVING Ipsative Tolkien Mixtral-Instruct stability to CACHE", "red")
                 with open("tolkien_ipsative_curve_cache.json", "w") as f:
                     json.dump(tolkien_ipsative_curve, f)
 
@@ -605,20 +812,30 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
             if msgs_ro_tolk:
                 axs[plt_i].bar(xs, ys, yerr=tick_len)
 
+                if metric == "Rank-Order" and figure_name == "tolk_ro_msgs":
+                    tolkien_ipsative_curve = {
+                        "xs": list(xs),
+                        "ys": list(ys),
+                        "tick_len": list(tick_len),
+                    }
+
+                    cprint("SAVING Rank-order Tolkien Mixtral-Instruct stability to CACHE", "red")
+                    with open("tolkien_ro_curve_cache.json", "w") as f:
+                        json.dump(tolkien_ipsative_curve, f)
+
             else:
                 cs = [family_2_color[model_2_family(x)] for x in xs]
                 labs = [model_2_family(x) for x in xs]
 
                 axs[plt_i].bar(xs, ys, yerr=tick_len, color=cs, label=labs)
 
-
         axs[plt_i].set_ylim(min_y, max_y)
         axs[plt_i].set_xticklabels([x_label_map.get(m, m) for m in models], rotation=rotatation_x_labels, fontsize=xticks_fontsize)
-        axs[plt_i].set_yticklabels(map(lambda x: np.round(x, 1), axs[plt_i].get_yticks()), fontsize=yticks_fontsize)
+        axs[plt_i].set_yticklabels(map(lambda x: np.round(x, round_y_lab), axs[plt_i].get_yticks()), fontsize=yticks_fontsize)
 
         # axs[plt_i].set_title(experiment_dir.replace("sim_conv_", "").replace("_seeds", ""))
 
-        axs[plt_i].set_ylabel(metric + " stability (r)", fontsize=y_label_fontsize)
+        axs[plt_i].set_ylabel(y_label, fontsize=y_label_fontsize)
 
         if add_title:
             if "donation" in experiment_dir:
@@ -635,7 +852,7 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
             axs[plt_i].set_xlabel("Simulated conversation length (n)", fontsize=x_label_fontsize)
 
         if add_legend:
-            legend_without_duplicate_labels(axs[plt_i], loc="best", title="LLM families", legend_loc=legend_loc)
+            legend_without_duplicate_labels(axs[plt_i], loc="best", title=legend_title, legend_loc=legend_loc)
 
     else:
 
@@ -659,7 +876,7 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
             ys = [data[experiment_dir][model][msg][metric] for msg in seed_strings]
 
             # [n_msgs, context pairs, n_pop]
-            all_corrs = np.array([data[experiment_dir][model][msg]["All_Ipsative_corrs"] for msg in seed_strings])
+            all_corrs = np.array([data[experiment_dir][model][msg][all_ipsative_corrs_str] for msg in seed_strings])
             all_corrs = np.mean(all_corrs, axis=1)  # average over context pairs
             c2 = np.array([
                 st.t.interval(confidence, len(msg_corrs) - 1, loc=np.mean(msg_corrs), scale=st.sem(msg_corrs))[1] for msg_corrs in all_corrs
@@ -680,13 +897,13 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
         max_y = 0.8 if metric == "Rank-Order" else 1.0
         axs[plt_i].set_ylim(-0.1, max_y)
         axs[plt_i].set_xlim(0, len(seed_strings) - 1)
-        axs[plt_i].set_ylabel(metric + " stability (r)", fontsize=y_label_fontsize)
+        axs[plt_i].set_ylabel(y_label, fontsize=y_label_fontsize)
         axs[plt_i].set_xlabel("Simulated conversation length (n)", fontsize=x_label_fontsize)
         # axs[plt_i].set_title(experiment_dir.replace("sim_conv_", "").replace("_seeds", ""))
         axs[plt_i].legend(bbox_to_anchor=(1.04, 1), loc="best", fontsize=legend_fontsize)
 
         axs[plt_i].set_xticklabels(axs[plt_i].get_xticks(), rotation=rotatation_x_labels, fontsize=xticks_fontsize)
-        axs[plt_i].set_yticklabels(map(lambda  x: np.round(x,1 ), axs[plt_i].get_yticks()), fontsize=yticks_fontsize)
+        axs[plt_i].set_yticklabels(map(lambda  x: np.round(x, round_y_lab), axs[plt_i].get_yticks()), fontsize=yticks_fontsize)
 
         plt.subplots_adjust(left=0.1, top=0.95, bottom=0.2, hspace=0.8)
 

@@ -3,14 +3,37 @@
 #SBATCH -C a100
 #SBATCH --time=03:59:59
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-29 # themes x n_msg -> 6x5
+#SBATCH --array=0-29 # themes x n_seeds -> 6x5
 #SBATCH -o slurm_logs/sb_log_%A_%a.out
 #SBATCH -e slurm_logs/sb_log_%A_%a.err
 ##SBATCH --qos=qos_gpu-dev
 
+
+##########################################################
+# Set the questionnaire and population (uncomment he corresponding 4 lines)
+##########################################################
+
+## PVQ - tolkien characters
+test_tag="pvq"
+experiment_name="pvq_test"
+data_dir="data_pvq"
+population_type="tolkien_characters"
+
+### PVQ - real world persona
+#test_tag="pvq"
+#experiment_name="pvq_test"
+#data_dir="data_pvq"
+#population_type="famous_people"
+
+## Donation - tolkien characters
+#test_tag="tolkien_donation"
+#experiment_name="tolkien_donation_test"
+#data_dir="data_tolkien_donation"
+#population_type="tolkien_characters"
+
 #####################################################
-### Simulated Conversations
-#####################################################
+
+
 
 # extract theme and n_msgs
 seed_list=(1 3 5 7 9)
@@ -43,6 +66,8 @@ echo "Theme:"$theme
 echo "Seed_i:"$seed_i
 echo "Seed:"$seed
 
+exit
+
 n_msgs=3
 
 permute_options_seed="$seed"_"$theme_i"
@@ -70,34 +95,10 @@ all_engines=(
   "Qwen-7B"
   "Qwen-72B-Chat"
   "dummy"
-#  "gpt-3.5-turbo-0301"
-#  "gpt-3.5-turbo-0613"
-#  "gpt-3.5-turbo-1106"
-#  "gpt-3.5-turbo-instruct-0914"
 )
 
 # Select engine based on provided index
 engine="${all_engines[$1]}"
-
-
-## PVQ
-#test_tag="pvq"
-#experiment_name="pvq_test"
-#data_dir="data_pvq"
-##population_type="tolkien_characters"
-#population_type="famous_people"
-
-## Tolkien DON
-#test_tag="tolkien_donation"
-#experiment_name="tolkien_donation_test"
-#data_dir="data_tolkien_donation"
-#population_type="tolkien_characters"
-
-# Tolkien DON
-test_tag="wvs_svas"
-experiment_name="wvs_svas_test"
-data_dir="data_wvs_svas"
-population_type="tolkien_characters"
 
 
 echo "Evaluation:$engine:$theme:$permute_options_seed:$n_msgs"
@@ -111,7 +112,6 @@ mkdir -p $LOG_DIR
 
 source $HOME/.bashrc
 
-#PY='/gpfsscratch/rech/imi/utu57ed/miniconda3/envs/llm_persp/bin/python'
 conda activate llm_persp
 
 

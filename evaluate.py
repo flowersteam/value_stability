@@ -1273,6 +1273,7 @@ def remove_prefix(s, pref):
 def main(args):
     engine = args.engine
     print("Engine:", engine)
+
     subjects = sorted([f.split("_test.csv")[0] for f in os.listdir(os.path.join(args.data_dir, "test")) if "_test.csv" in f])
 
     # dump results dir
@@ -1513,6 +1514,7 @@ def main(args):
 
             num_questions = len(test_df_dict["F"])
             assert max_n_options == test_df_dict["F"].shape[1] - 2
+            n_options = [max_n_options] * num_questions
 
         else:
 

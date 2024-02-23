@@ -62,7 +62,6 @@ def process_json(json_path, show_values=False):
 
                 # print(" ".join([f"{val.replace('Acceptance Rate ','')}:{sc:.2f}" for val, sc in metr[test_set].items()]))
 
-    # from IPython import embed; embed();
 
 def load_json_file(file_path):
     try:
@@ -76,7 +75,6 @@ def load_json_file(file_path):
     except Exception as e:
         print(f"An error occurred: {e}")
         
-        
 
 def find_most_common_element(lst):
     if not lst:
@@ -85,7 +83,6 @@ def find_most_common_element(lst):
     count = Counter(lst)
     most_common = count.most_common(1)[0][0]
     return most_common
-
 
 
 # Function to load a JSON file

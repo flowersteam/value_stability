@@ -8,8 +8,22 @@
 #SBATCH -e slurm_logs/sb_log_%A_%a.err
 ##SBATCH --qos=qos_gpu-dev
 
-#####################################################
-### Simulated Conversations
+##########################################################
+# Set the questionnaire and population (uncomment he corresponding 4 lines)
+##########################################################
+
+## PVQ - tolkien characters
+test_tag="pvq"
+experiment_name="pvq_test"
+data_dir="data_pvq"
+population_type="tolkien_characters"
+
+### PVQ - real world persona
+#test_tag="pvq"
+#experiment_name="pvq_test"
+#data_dir="data_pvq"
+#population_type="famous_people"
+
 #####################################################
 
 # extract theme n_msgs and seed
@@ -74,13 +88,6 @@ all_engines=(
 engine="${all_engines[$1]}"
 
 
-## PVQ
-test_tag="pvq"
-experiment_name="pvq_test"
-data_dir="data_pvq"
-population_type="tolkien_characters"
-#population_type="famous_people"
-
 
 
 echo "Evaluation:$engine:$theme:$permute_options_seed:$n_msgs"
@@ -95,7 +102,6 @@ mkdir -p $LOG_DIR
 
 source $HOME/.bashrc
 
-#PY='/gpfsscratch/rech/imi/utu57ed/miniconda3/envs/llm_persp/bin/python'
 conda activate llm_persp
 
 

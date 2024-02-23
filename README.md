@@ -6,8 +6,9 @@ This codebase is based on MMLU codebase. - link
 
 Setup the conda env
 ```
-conda create -n llm_persp python=3.9
+conda create -n llm_stability python=3.9
 conda activate llm_persp
+cd test/
 pip install -r requirements.txt 
 
 # install transformers
@@ -17,34 +18,90 @@ conda install cudatoolkit -y
 ```
 
 
-[//]: # (or)
+# Evaluating a model
 
-[//]: # (```)
+The ``run_single.sh`` contains an example of how to evaluate a models.
 
-[//]: # (git clone https://github.com/huggingface/transformers.git)
-
-[//]: # (cd transformers)
-
-[//]: # (git checkout d04ec99bec8a0b432fc03ed60cea9a1a20ebaf3c)
-
-[//]: # (pip install .)
-
-[//]: # (```)
-
-
-# Running experiments
-
-Script run_dummy.sh shows an example of how to run a model.
-
-Scripts run_[neurips,iclr]_[pvq,hof,big5].sh contain the commands used to run our experiments.
-
-# Evaluation
-
-The bar_viz.py script is used for visualization evaluation and statistical analysis.
-It can be used as such:
+It requires to set 7 parameters, which are by default set to:
 ```
-python visualization_scripts/bar_viz.py results_iclr/results_pvq_test_sim_conv_gpt-3.5-turbo-0301_perm_50_theme/*
+1. Theme:grammar
+2. Seed:1
+3. N messages:3
+4. LLM:dummy
+5. Questionnaire:pvq
+6. Population:tolkien_characters
+7. Experiment name:test
 ```
-Scripts [neurips,iclr]_evaluations.sh contain command to evaluate and plot the results from our experiments.
+
+You can modify those parameters inside the script (following the comments).
+
+
+From the test directory, run
+```
+bash run_single.sh
+```
+
+This will evaluate a dummy model, which chooses random answers on the PVQ questionniare.
+
+# Running all experiments
+
+
+All the experiments in the paper are shown in ```run_campain*.sh``` scripts.
+
+These are slurm scripts and enable parallel evaluation of different topics and seeds. These scripts require an argument, which defines the model.
+The following command evaluates the Mistral-Instruct-v0.2 model:
+
+```
+sbatch run_campaign_sim_conv_pvq_seeds.sh 7
+```
+
+Those scripts require setting the population and the questionnaire. They can easily be changed following the scripts comments.
+By default, they are set to fictional characters and PVQ:
+```
+## PVQ - tolkien characters
+test_tag="pvq"
+experiment_name="pvq_test"
+data_dir="data_pvq"
+population_type="tolkien_characters"
+```
+
+
+The scripts are used for various experiments as follows:
+
+Experiments with simulated populations: ```run_campaign_sim_conv_pvq_seeds.sh``` 
+
+Experiments with simulated populations and increasing conversation length:
+```run_campaign_sim_conv_pvq_msgs.sh```
+
+Experiments with no persona instructions: ```run_campaign_sim_conv_no_pop.sh```
+
+Ablation study on the system message with LLaMa-2 models: ```run_campaign_sim_conv_pvq_NO_SYSTEM.sh```
+
+
+## Non-slurm machine
+
+The ```run_campain*.sh``` scripts can be run on a regular machine my manually setting the ```SLURM_ARRAY_TAK_ID''' variable as follows:
+
+1. Check the slurm array size parameter
+
+```
+grep "$SBATCH --array=" run_campaign_sim_conv_pvq_seeds.sh
+```
+
+The expected output is:
+```#SBATCH --array=0-29 # themes x n_seeds -> 6x5```
+This means that slurm would run **30 parallel jobs** corresponding to 6 themes (5 + no theme) and 5 seeds.
+
+2. Run the jobs manually
+
+You can run the 30 evaluations sequentially on a regular machine as follows:
+```
+for i in {0..30}; do SLURM_ARRAY_TASK_ID=$i bash run_campaign_sim_conv_pvq_seeds.sh ; done
+```
+
+or in parallel as follows:
+```
+for i in {0..30}; do SLURM_ARRAY_TASK_ID=$i bash run_campaign_sim_conv_pvq_seeds.sh & done
+```
 
 

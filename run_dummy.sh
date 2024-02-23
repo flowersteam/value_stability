@@ -25,14 +25,28 @@ engines=(
 
 for engine in "${engines[@]}"; do
 
-#--simulated-population-type permutations \
-#--permutations 50 \
 
 
+# Tolkien characters
+#--simulated-population-type tolkien_characters \
+
+# Real world personas
 #--simulated-population-type famous_people \
 
+# No personas
 #--simulated-population-type permutations \
 #--permutations 50 \
+
+
+# Questionnaire
+# PVQ
+#--data_dir data/data_pvq \
+#--experiment_name pvq_test \
+
+# tolkien donation
+#--data_dir data/data_tolkien_donation \
+#--experiment_name tolkien_donation_test \
+
 
 python -u evaluate.py \
 --simulated-population-type tolkien_characters \
@@ -45,8 +59,8 @@ python -u evaluate.py \
 --save_dir results/test/test \
 --engine $engine \
 --query-in-reply \
---data_dir data/data_wvs_svas \
---experiment_name wvs_svas_test \
+--data_dir data/data_pvq \
+--experiment_name pvq_test \
 --pvq-version "pvq_auto" \
 --no-profile \
 --direct-perspective \
@@ -57,20 +71,3 @@ python -u evaluate.py \
 
 done
 
-#--data_dir data/data_wvs_svas \
-#--experiment_name wvs_svas_test \
-
-#--data_dir data/data_pvq \
-#--experiment_name pvq_test \
-
-#--data_dir data/data_tolkien_donation \
-#--experiment_name tolkien_donation_test \
-
-#--data_dir data/data_tolkien_ultimatum \
-#--experiment_name tolkien_ultimatum_test \
-
-#--data_dir data/data_regular_ultimatum \
-#--experiment_name regular_ultimatum_test \
-
-#--data_dir data/data_tolkien_good_bad \
-#--experiment_name tolkien_good_bad_test \

@@ -1,16 +1,19 @@
 #!/bin/bash
 #SBATCH -A imi@a100
 #SBATCH -C a100
-#SBATCH --time=03:59:59
-#SBATCH --gres=gpu:1
-#SBATCH --array=0-24 # themes x n_msg -> 5x5
+#SBATCH --time=01:59:59
+#SBATCH --gres=gpu:4
+##SBATCH --array=0-24 # themes x n_msg -> 5x5 (no default profile, only contexts)
+#SBATCH --array=29-29 # just no conversation, default profile
 #SBATCH -o slurm_logs/sb_log_%A_%a.out
 #SBATCH -e slurm_logs/sb_log_%A_%a.err
 ##SBATCH --qos=qos_gpu-dev
 
-#####################################################
-### Simulated Conversations
-#####################################################
+## PVQ
+test_tag="pvq"
+experiment_name="pvq_test"
+data_dir="data_pvq"
+population_type="permutations"
 
 # extract theme and n_msgs
 n_msgs_list=(9 7 5 3 1) # 5
@@ -23,19 +26,26 @@ themes=(
   "poem"
   "history"
   "chess"
+  "None"
 )
 themes_len=${#themes[@]}
 
+SLURM_ARRAY_TASK_ID=25
 echo "ID:"$SLURM_ARRAY_TASK_ID
 
-theme_i=$(( SLURM_ARRAY_TASK_ID / $n_msgs_len ))
-msgs_i=$(( SLURM_ARRAY_TASK_ID % $themes_len ))
 
-echo "Theme_i:"$theme_i
-echo "Msg_i:"$msgs_i
+theme_i=$(( SLURM_ARRAY_TASK_ID / $n_msgs_len ))
+msgs_i=$(( SLURM_ARRAY_TASK_ID % $n_msgs_len ))
+
+#  echo "Theme_i:"$theme_i
+#  echo "Msg_i:"$msgs_i
 
 theme="${themes[$theme_i]}"
 n_msgs="${n_msgs_list[$msgs_i]}"
+
+echo "Theme:"$theme
+echo "Msg:"$n_msgs
+
 
 
 permute_options_seed=$theme_i
@@ -73,11 +83,6 @@ all_engines=(
 engine="${all_engines[$1]}"
 
 
-## PVQ
-test_tag="pvq"
-experiment_name="pvq_test"
-data_dir="data_pvq"
-population_type="permutations"
 
 
 echo "Evaluation:$engine:$theme:$permute_options_seed:$n_msgs"
@@ -91,7 +96,6 @@ mkdir -p $LOG_DIR
 
 source $HOME/.bashrc
 
-#PY='/gpfsscratch/rech/imi/utu57ed/miniconda3/envs/llm_persp/bin/python'
 conda activate llm_persp
 
 
