@@ -66,7 +66,6 @@ echo "Theme:"$theme
 echo "Seed_i:"$seed_i
 echo "Seed:"$seed
 
-exit
 
 n_msgs=3
 
