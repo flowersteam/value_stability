@@ -25,8 +25,6 @@ engines=(
 
 for engine in "${engines[@]}"; do
 
-
-
 # Tolkien characters
 #--simulated-population-type tolkien_characters \
 
@@ -47,10 +45,14 @@ for engine in "${engines[@]}"; do
 #--data_dir data/data_tolkien_donation \
 #--experiment_name tolkien_donation_test \
 
+# tolkien stealing
+#--data_dir data/data_pvq \
+#--experiment_name pvq_test \
+
 
 python -u evaluate.py \
 --simulated-population-type tolkien_characters \
---simulate-conversation-theme "chess" \
+--simulate-conversation-theme "None" \
 --simulated-human-knows-persona \
 --simulated-conversation-n-messages 3 \
 --permute-options \
@@ -59,15 +61,14 @@ python -u evaluate.py \
 --save_dir results/test/test \
 --engine $engine \
 --query-in-reply \
---data_dir data/data_pvq \
---experiment_name pvq_test \
+--data_dir data/data_tolkien_bag \
+--experiment_name tolkien_bag_test \
 --pvq-version "pvq_auto" \
 --no-profile \
 --direct-perspective \
 --base-model-template \
 --system-message \
 --verbose
-
 
 done
 

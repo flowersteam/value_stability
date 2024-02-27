@@ -570,32 +570,15 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
         questionnaire_description = "Here we briefly describe some people. Please read each description and think about how much each person is or is not like you. Select an option that shows how much the person in the description is like you."
         questionnaire_description_empty = False
 
-    elif "ultimatum" in experiment_name:
-        assert "ultimatum" in args.data_dir
-        questionnaire_description = "In the following scenario, You have to decide whether to accept or reject a proposal."
-        questionnaire_description_empty = False
-
-    elif "tolkien_good_bad" in experiment_name:
-        assert "tolkien_good_bad" in args.data_dir
-        questionnaire_description = ""
-        questionnaire_description_empty = True
-
     elif "donation" in experiment_name:
         assert "donation" in args.data_dir
         questionnaire_description = ""
         questionnaire_description_empty = True
 
-    elif "tolkien_public_goods" in experiment_name:
-        assert "tolkien_public_goods" in args.data_dir
+    elif "bag" in experiment_name:
+        assert "bag" in args.data_dir
         questionnaire_description = ""
         questionnaire_description_empty = True
-
-    elif "wvs_svas" in experiment_name:
-        assert "wvs_svas" in args.data_dir
-        # VSM questionnaire doesn't have a description
-        questionnaire_description = ""
-        questionnaire_description_empty = True
-
 
     elif "hofstede" in experiment_name:
         assert "hofstede" in args.data_dir
@@ -911,25 +894,6 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
         )
 
         skip_generation = False
-        if "wvs_svas" in args.data_dir:
-
-            if item_i == 6:
-                assert "choose up to five" in prompt['item_str']
-                previous_mentions = []
-
-            elif 6 < item_i < 11:
-                assert "choose up to five" in prompt['item_str']
-
-                # other formats don't have the implementation for questions 6-16 (choose up to five)
-                assert args.format == "chat"
-                previous_mentions_labels = [map_number_to_choice(pm, inv_permutations_dict) for pm in previous_mentions]
-                prompt["query_str"] = prompt['query_str'] + "), (".join(previous_mentions_labels + [''])
-
-            elif item_i > 16:
-                assert not "choose up to five" in prompt['item_str']
-
-            if 10 < item_i < 17:
-                skip_generation = True
 
         assert n_options == len(permutations_dict)
         answers = choices[:n_options]
@@ -939,12 +903,12 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
         label = test_df.iloc[item_i, test_df.shape[1]-1]
         assert label in answers + ["undef"]
 
-        if args.estimate_gpt_tokens and not skip_generation:
+        if args.estimate_gpt_tokens:
             encoder = tiktoken.encoding_for_model('gpt-3.5-turbo-0301')
             assert encoder == tiktoken.encoding_for_model('gpt-4-0314')
             gpt_token_counter += len(encoder.encode(" ".join(prompt.values())))
 
-        if args.simulate_conversation_theme and not skip_generation:
+        if args.simulate_conversation_theme:
 
             set_persona_str = prompt["set_persona_str"]
             if messages_conv is None:
@@ -961,12 +925,7 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
                 print("LOADING CACHED CONVERSATION")
                 assert hash_chat_conv(messages_conv) == messages_conv_hash
 
-        if skip_generation:
-            print("Skipping WVS choose up to five")
-            generation = random.choice([f"{c}" for c in answers])
-            lprobs = dummy_lprobs_from_generation(generation, answers, label_2_text_option_dict)
-
-        elif engine == "dummy":
+        if engine == "dummy":
 
             messages = construct_messages(
                 prompt=prompt,
@@ -994,9 +953,10 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
 
             print(f"************************\nFORMATTED PROMPT:\n{formatted_prompt}\n******************")
 
+            # generation = messages[-2]['content'][messages[-2]['content'].index(") War") - 1:][:1]
             generation = random.choice([f"{c}" for c in answers])
             # if re.search("various changes", messages[-2]['content']):
-            #     generation = messages[-2]['content'][messages[-2]['content'].index(") Go") - 1:][:1]
+            #     generation = messages[-2]['content'][messages[-2]['content'].index(") Wait") - 1:][:1]
             # else:
             #     generation = random.choice([f"{c}" for c in answers])
 
@@ -1197,55 +1157,12 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
         print(colored(f"Pred:{pred} (Generation:{generation}; Score: {score})", "green"))
         print("------------------")
 
-        if "wvs_svas" in args.data_dir:
-
-            if 5 < item_i < 17:
-                assert "choose up to five" in prompt['item_str']
-            else:
-                assert "choose up to five" not in prompt['item_str']
-
-            if 5 < item_i < 11:
-                assert not skip_generation
-                previous_mentions.append(score)
-
         cors.append(cor)
         all_lprobs.append(lprobs)
         all_probs.append(probs)
         all_answers.append(pred)
         all_generations.append(generation)
         all_scores.append(score)
-
-        if "wvs_svas" in args.data_dir and item_i == 16:
-            assert len(all_scores) == 17
-
-            assert skip_generation
-            # parse previous answers and put "mentioned/not mentioned"
-
-            assert len(previous_mentions) == 5
-            previous_mentions = list(set(previous_mentions))
-
-            for op_i in range(n_options):
-                # mentioned -> 1
-                # not mentioned -> 2
-                mention_score = 1 if (op_i+1 in previous_mentions) else 2
-                mention_generation = answers[0] if mention_score == 1 else answers[1]
-                mention_answers = answers[:2]
-                mention_label_2_text_option_dict = dict(zip(mention_answers, ["Mention", "Don't mention"]))
-                mention_lprobs = dummy_lprobs_from_generation(
-                    mention_generation, mention_answers, mention_label_2_text_option_dict
-                )
-                mention_probs = softmax(np.array(mention_lprobs))
-                mention_pred = {i: c for i, c in enumerate(mention_answers)}[np.argmax(mention_lprobs)]
-                mention_cor = False
-
-                # lprobs, probs, pred, generation, score
-                mention_index = 6 + op_i
-                cors[mention_index] = mention_cor
-                all_lprobs[mention_index] = mention_lprobs
-                all_probs[mention_index] = mention_probs
-                all_answers[mention_index] = mention_pred
-                all_generations[mention_index] = mention_generation
-                all_scores[mention_index] = mention_score
 
     acc = np.mean(cors)
     cors = np.array(cors)
@@ -1384,8 +1301,10 @@ def main(args):
     ]:
         print(f"Loading {engine}")
         tokenizer = AutoTokenizer.from_pretrained(f"mistralai/{engine}", cache_dir=hf_cache_dir, device_map="auto")
+        # model = AutoModelForCausalLM.from_pretrained(
+        #     f"mistralai/{engine}", device_map="auto", cache_dir=hf_cache_dir, torch_dtype=torch.float16, attn_implementation="flash_attention_2")
         model = AutoModelForCausalLM.from_pretrained(
-            f"mistralai/{engine}", device_map="auto", cache_dir=hf_cache_dir, torch_dtype=torch.float16, attn_implementation="flash_attention_2")
+            f"mistralai/{engine}", device_map="auto", cache_dir=hf_cache_dir, torch_dtype=torch.float16)
 
         llm_generator = (tokenizer, model)
 
@@ -1396,7 +1315,8 @@ def main(args):
         model_name = engine.rstrip("-4b")
         print(f"Loading {engine} -> {model_name}")
         tokenizer = AutoTokenizer.from_pretrained(f"mistralai/{model_name}", cache_dir=hf_cache_dir, device_map="auto")
-        model = AutoModelForCausalLM.from_pretrained(f"mistralai/{model_name}", device_map="auto", cache_dir=hf_cache_dir, load_in_4bit=True, attn_implementation="flash_attention_2")
+        # model = AutoModelForCausalLM.from_pretrained(f"mistralai/{model_name}", device_map="auto", cache_dir=hf_cache_dir, load_in_4bit=True, attn_implementation="flash_attention_2")
+        model = AutoModelForCausalLM.from_pretrained(f"mistralai/{model_name}", device_map="auto", cache_dir=hf_cache_dir, load_in_4bit=True)
 
         llm_generator = (tokenizer, model)
 
@@ -1435,13 +1355,13 @@ def main(args):
 
     if "hofstede" in args.data_dir:
         max_n_options = 5
-    elif "wvs_svas" in args.data_dir:
-        max_n_options = 15
     elif "pvq" in args.data_dir:
         max_n_options = 6
     elif "big5" in args.data_dir:
         max_n_options = 5
     elif "donation" in args.data_dir:
+        max_n_options = 6
+    elif "bag" in args.data_dir:
         max_n_options = 6
     else:
         raise ValueError(f"Undefined number of options for data in {args.data_dir}.")
@@ -1467,14 +1387,6 @@ def main(args):
         with open("personas/famous_people/famous_people_genders.txt") as f:
             simulated_population_genders = [g.rstrip() for g in f.readlines()]
 
-    # elif args.simulated_population_type == "anes":
-    #     # https://electionstudies.org/
-    #     with open("personas/ANES/voters2016_50.json") as f:
-    #         simulated_population = json.load(f)
-    #
-    # elif args.simulated_population_type in ["llm_personas", "user_personas"]:
-    #     with open("personas/personachat/grammar/personachat_I.txt") as f:
-    #         simulated_population = [bio.rstrip() for bio in f.readlines()]
 
     all_cors = []
 
@@ -1518,28 +1430,12 @@ def main(args):
 
         else:
 
-            if "wvs_svas" in args.data_dir:
-                # wvs has a varying number of options
-                test_df = pd.read_csv(
-                    os.path.join(args.data_dir, args.eval_set, subject + f"_{args.eval_set}.csv"),
-                    header=None,
-                    names=range(max_n_options),
-                    # keep_default_na=False,
-                )
-                test_df.fillna("undef", inplace=True)
-
-                max_n_options_list = np.array([max_n_options] * len(test_df))
-                undef_counts = np.array(test_df.apply(lambda row: (row == 'undef').sum(), axis=1))
-                n_options = max_n_options_list - undef_counts - 1
-
-
-            else:
-                test_df = pd.read_csv(
-                    os.path.join(args.data_dir, args.eval_set, subject + f"_{args.eval_set}.csv"),
-                    header=None,
-                    keep_default_na=False,
-                )
-                n_options = [max_n_options]*len(test_df)
+            test_df = pd.read_csv(
+                os.path.join(args.data_dir, args.eval_set, subject + f"_{args.eval_set}.csv"),
+                header=None,
+                keep_default_na=False,
+            )
+            n_options = [max_n_options]*len(test_df)
 
             # if the question contains \n in the csv it will get parsed as \\n, we revert it back here to be newline
             test_df[0][:] = test_df[0][:].str.replace("\\n", "\n")
@@ -1606,10 +1502,6 @@ def main(args):
 
                 metrics[sim_part_i][subject] = {k: float(v) for k, v in metrics[sim_part_i][subject].items()}
 
-            elif "wvs_svas" in args.data_dir:
-                # per participant metrics don't exists
-                metrics[sim_part_i][subject] = {'answers': list(map(int, preds_values))}
-
             elif "big5" in args.data_dir:
 
                 # items are given in the following order
@@ -1656,97 +1548,32 @@ def main(args):
                 for profile_value, idxs in profile_values_idx.items():
                     metrics[sim_part_i][subject][profile_value] = preds_values[idxs].mean() # legacy: todo: remove and save those below
 
-            elif "donation" in args.data_dir:
+            elif "tolkien_donation" in args.data_dir:
                 assert "donation" in args.experiment_name
 
-                if "tolkien_donation" in args.data_dir:
+                groups = ["elves", "dwarves", "orcs", "humans", "hobbits"]
 
-                    groups = ["elves", "dwarves", "orcs", "humans", "hobbits"]
+                donated = (preds_values-1)*2
+                group_donations = np.split(donated, len(groups))
+                assert set([len(g) for g in group_donations]) == {20}
 
-                    donated = (preds_values-1)*2
-                    group_donations = np.split(donated, len(groups))
-                    assert set([len(g) for g in group_donations]) == {20}
-
-                    metrics[sim_part_i][subject] = {
-                        f"Donation {g}": np.mean(g_d) for g, g_d in zip(groups, group_donations)
-                    }
-
-                else:
-                    raise ValueError("Unknown donation type: {args.data_dir}.")
-
-            elif "ultimatum" in args.data_dir:
-                assert "ultimatum" in args.experiment_name
-
-                if "tolkien_ultimatum" in args.data_dir:
-
-                    groups = [
-                        "elves_fair",
-                        "elves_unfair",
-                        "dwarves_fair",
-                        "dwarves_unfair",
-                        "orcs_fair",
-                        "orcs_unfair",
-                        "humans_fair",
-                        "humans_unfair",
-                        "hobbits_fair",
-                        "hobbits_unfair",
-                    ]
-
-                    accepted = preds_values == 1
-                    group_acceptances = np.split(accepted, len(groups))
-                    assert len(group_acceptances[0]) == 10  # 8 x 10 questions
-
-                    # 1 - Accept; 2 - Reject;
-                    metrics[sim_part_i][subject] = {
-                        f"Acceptance Rate {g}": np.mean(g_a) for g, g_a in zip(groups, group_acceptances)
-                    }
-
-                elif "regular_ultimatum":
-                    # accepted = preds_values == 1
-                    # metrics[sim_part_i][subject] = {
-                    #     f"Acceptance Rate": np.mean(accepted)
-                    # }
-
-                    groups = [
-                        "baa_fair", "baa_unfair",
-                        "w_fair", "w_unfair",
-                        "anhpi_fair", "anhpi_unfair",
-                        "aian_fair", "aian_unfair",
-                        "hl_fair", "hl_unfair",
-                    ]
-
-                    accepted = preds_values == 1
-                    group_acceptances = np.split(accepted, len(groups))
-                    assert len(group_acceptances[0]) == 10  # 10 x 10 questions
-
-                    # 1 - Accept; 2 - Reject;
-                    metrics[sim_part_i][subject] = {
-                        f"Acceptance Rate {g}": np.mean(g_a) for g, g_a in zip(groups, group_acceptances)
-                    }
-
-                else:
-                    raise ValueError("undefined ultimatum experiment")
-
-            elif "tolkien_good_bad":
-                accepted = preds_values == 1
                 metrics[sim_part_i][subject] = {
-                    f"Protagonist score": np.mean(accepted)
+                    f"Donation {g}": np.mean(g_d) for g, g_d in zip(groups, group_donations)
                 }
 
-            elif "tolkien_public_goods" in args.data_dir:
-                assert len(preds_values) == 4
+            elif "tolkien_bag" in args.data_dir:
+                assert "bag" in args.experiment_name
+
+                groups = ["elves", "dwarves", "orcs", "humans", "hobbits"]
+                group_bag = np.split(preds_values, len(groups))
+                assert set([len(g) for g in group_bag]) == {20}
+
                 metrics[sim_part_i][subject] = {
-                    g: float(preds_values[i]-1)*10 for i, g in enumerate(["elves", "dwarves", "orcs", "humans"])
+                    f"Return {g}": np.mean(g_d) for g, g_d in zip(groups, group_bag)
                 }
 
             else:
                 raise NotImplementedError("Evaluation not implemented")
-
-            # res_test_df = test_df.copy()
-            # res_test_df["{}_correct".format(engine)] = cors
-            # for j in range(eval_probs.shape[1]):
-            #     choice = choices[j]
-            #     res_test_df["{}_choice{}_probs".format(engine, choice)] = eval_probs[:, j]
 
         # aggregate to means
         mean_subj_acc = defaultdict(list)
@@ -1777,44 +1604,6 @@ def main(args):
 
         pop_metrics = {}
 
-        if "wvs_svas" in args.data_dir:
-
-            if args.simulated_population_type == "tolkien_characters":
-
-                with open("personas/tolkien_characters/tolkien_characters_races.txt", "r") as file:
-                    races = [line.rstrip('\n') for line in file]
-
-                elves_inds = np.where(np.array(races) == "el")[0]
-                humans_inds = np.where(np.array(races) == "hu")[0]
-                bg_inds = np.where(np.array(races) == "bg")[0]
-
-                tolk_characters_races_inds = {
-                    "all": list(range(len(simulated_population))),
-                    "elves": elves_inds,
-                    "humans": humans_inds,
-                    "bad guys": bg_inds,
-                }
-
-                for race, inds in tolk_characters_races_inds.items():
-                    race_answers = np.array([metrics[i]['wvs_svas']['answers'] for i in inds])
-                    pop_metrics[race] = {"hist": [], "distr": []}
-
-                    for it_i, n_opt in enumerate(n_options):
-                        hist = dict(zip(*np.unique(race_answers[:, it_i], return_counts=True)))
-                        hist = {int(k): int(v) for k,v in hist.items()}
-                        pop_metrics[race]["hist"].append(hist)
-
-                        # # for up to five questions - mention, don't mention
-                        # if 5 < it_i < 17:
-                        #     n_opt = 2
-
-                        N = sum(hist.values())
-                        distr = {opt: n/N for opt, n in hist.items()}
-                        assert len(distr) >= len(hist)
-                        pop_metrics[race]["distr"].append(distr)
-
-            else:
-                raise NotImplementedError("Other populations are not implemented for wvs_svas")
 
         # save results
         for subj, m in mean_metrics.items():

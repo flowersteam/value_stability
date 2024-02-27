@@ -14,7 +14,6 @@ def process_json(json_path, show_values=False):
     answers = json_data['answers']
 
     test_set = "pvq_male"
-    # test_set = "tolkien_ultimatum"
     # if the biggest logprob is -np.inf -> the answer was refused
     pc_refused = np.stack(
         [np.array(list(lps.values())[0]).max(axis=1) == -np.inf for lps in json_data['lprobs']]

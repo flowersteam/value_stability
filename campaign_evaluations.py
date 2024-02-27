@@ -64,9 +64,10 @@ def get_all_ipsative_corrs_str(default_profile):
     return all_ipsative_corrs_str
 
 
-def run_analysis(eval_script_path, data_dir, assert_n_contexts=None, insert_dummy_participants=False, default_profile=None, paired_data_dir=None):
+def run_analysis(eval_script_path, data_dir, assert_n_contexts=None, insert_dummy_participants=False, default_profile=None, paired_data_dir=None, RO_neutral=False, RO_neutral_data_dir=None, no_ips=False):
     # run evaluation script
-    command = f"python {eval_script_path} --result-json-stdout {'--assert-n-dirs ' + str(assert_n_contexts) if assert_n_contexts else ''} {'--insert-dummy' if insert_dummy_participants else ''} {f'--default-profile {default_profile}' if default_profile is not None else ''} {data_dir}/*/* {f'--paired-dirs {paired_data_dir}/*/*' if paired_data_dir is not None else ''}"
+    command = f"python {eval_script_path} --result-json-stdout {'--assert-n-dirs ' + str(assert_n_contexts) if assert_n_contexts else ''} {'--insert-dummy' if insert_dummy_participants else ''} {f'--default-profile {default_profile}' if default_profile is not None else ''} {data_dir}/*/* {f'--paired-dirs {paired_data_dir}/*/*' if paired_data_dir is not None else ''} {f'--neutral-ranks --neutral-dir {RO_neutral_data_dir}' if RO_neutral else ''} {'--no-ips' if no_ips else ''}"
+    # print("Command: ", command)
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
 
@@ -89,7 +90,7 @@ models = [
     "llama_2_70b",  # 2 gpu
     "llama_2_7b_chat",
     "llama_2_13b_chat",
-    "llama_2_70b_chat",  # 2 gpu
+    # "llama_2_70b_chat",  # 2 gpu
     "Mistral-7B-v0.1",
     "Mistral-7B-Instruct-v0.1",
     "Mistral-7B-Instruct-v0.2",
@@ -193,17 +194,19 @@ metric = "Ipsative"
 
 
 # figure_name = "tolk_ro_t"
-figure_name = "paired_tolk_ro_uni"
+# figure_name = "paired_tolk_ro_uni"
 # figure_name = "paired_tolk_ro_ben"
 # figure_name = "paired_tolk_ro_pow"
 # figure_name = "paired_tolk_ro_ach"
 # figure_name = "fam_ro_t"
 # figure_name = "don_t"
+# figure_name = "bag_t"
 # figure_name = "no_pop_ips"
 # figure_name = "tolk_ro_msgs"
+# figure_name = "tolk_ro_msgs_neutral"
 # figure_name = "tolk_ips_msgs"
 # figure_name = "no_pop_msgs"
-# figure_name = "tolk_ips_msgs_default_prof"
+figure_name = "tolk_ips_msgs_default_prof"
 # figure_name = "llama_sys_no_sys"
 
 rotatation_x_labels = 0
@@ -221,7 +224,7 @@ interval_figsize_y = 7
 
 round_y_lab = 1
 
-show_human_change = True
+show_human_change = False
 legend_loc = None
 
 legend_title = "LLM families"
@@ -234,6 +237,8 @@ add_tolkien_ipsative_curve = False
 left_adjust = None
 paired_dir = None
 y_label = None
+
+RO_neutral = False
 
 if figure_name == "no_pop_msgs":
     experiment_dirs = ["sim_conv_pvq_permutations_msgs"]
@@ -287,6 +292,10 @@ elif figure_name == "tolk_ips_msgs_default_prof":
 
     interval_figsize_x = 6
     interval_figsize_y = 6
+
+    # PLOSONE
+    interval_figsize_x = 6
+    interval_figsize_y = 4
 
 
 elif figure_name == "no_pop_ips":
@@ -430,6 +439,25 @@ elif figure_name == "don_t":
 
     min_y, max_y = -0.1, 0.8  # RO
 
+elif figure_name == "bag_t":
+    experiment_dirs = ["sim_conv_tolkien_bag_tolkien_characters_seeds"]
+
+    seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
+
+    add_tolkien_ipsative_curve = False
+    bar_plots = True
+    add_legend = False
+    add_title = True
+    metric = "Rank-Order"
+    human_change_xloc = 6.8
+    msgs_ro_tolk = False
+    rotatation_x_labels = 90
+
+    xticks_fontsize = 15
+    yticks_fontsize = 18
+
+    min_y, max_y = -0.1, 0.8  # RO
+
 elif figure_name == "tolk_ro_msgs":
     # Messages on Rank-Order Tolkien
     models = ["1_msgs", "3_msgs", "5_msgs", "7_msgs", "9_msgs"]
@@ -451,7 +479,41 @@ elif figure_name == "tolk_ro_msgs":
     y_label_fontsize = 35
     x_label_fontsize = 30
 
+    round_y_lab = 2
     min_y, max_y = 0.25, 0.5  # RO
+
+elif figure_name == "tolk_ro_msgs_neutral":
+    # Messages on Rank-Order Tolkien
+    models = ["1_msgs", "3_msgs", "5_msgs", "7_msgs", "9_msgs"]
+    experiment_dirs = ["sim_conv_pvq_tolkien_characters_msgs/Mixtral-8x7B-Instruct-v0.1"]
+    seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
+
+    RO_neutral_dir = "sim_conv_pvq_tolkien_characters_seeds/Mixtral-8x7B-Instruct-v0.1"
+    RO_neutral = True
+
+    bar_plots = True
+
+    bars_as_plot = True
+    add_tolkien_ipsative_curve = False
+    add_tolkien_ro_curve = True
+    msgs_ro_tolk = True
+
+    add_legend = True
+    legend_title=None
+    label_ = "Rank-Order stability\n  (with the neutral order)"
+
+    metric = "Rank-Order"
+    human_change_xloc = 6.8
+    interval_figsize_x = 14
+    interval_figsize_y = 7
+
+    xticks_fontsize = 25
+    yticks_fontsize = 25
+    y_label_fontsize = 35
+    x_label_fontsize = 30
+
+    round_y_lab = 2
+    min_y, max_y = 0.30, 0.58  # RO
 
 elif figure_name == "tolk_ips_msgs":
     # Messages on Ips Tolkien
@@ -536,7 +598,7 @@ if insert_dummy_participants:
 
 assert_n_contexts = None
 # assert_n_contexts = 6
-# assert_n_contexts = 5
+assert_n_contexts = 5
 # assert_n_contexts = 4
 
 if assert_n_contexts:
@@ -546,12 +608,6 @@ if assert_n_contexts:
 # prefix = "results_ult_sim_conv_famous_people"
 
 
-# # # sim conv - ultimatum
-# data_dirs = [
-#     "results_ultimatum_sim_conv_v2_perm",
-# ]
-# assert_n_contexts = 5
-# prefix = "results_pvq_sim_conv_tolkien_characters"
 
 
 data = {}
@@ -570,7 +626,15 @@ for experiment_dir in experiment_dirs:
                 continue
 
             data_dir = os.path.join("results", experiment_dir, model, seed_str)
-            paired_data_dir = os.path.join("results", paired_dir, model, seed_str)
+            if paired_dir:
+                paired_data_dir = os.path.join("results", paired_dir, model, seed_str)
+            else:
+                paired_data_dir = None
+
+            if RO_neutral:
+                RO_neutral_data_dir = os.path.join("results", RO_neutral_dir, seed_str)
+            else:
+                RO_neutral_data_dir = None
 
             if len(glob.glob(data_dir+"/*/*/*.json")) < 2:
                 print(f"No evaluation found at {data_dir}.")
@@ -578,12 +642,17 @@ for experiment_dir in experiment_dirs:
                 eval_data = dict(zip(["Mean-Level", "Rank-Order", "Ipsative"], [np.nan, np.nan, np.nan]))
 
             else:
+                no_ips = metric != "Ipsative"
                 # compute hash
                 eval_script_path = "./visualization_scripts/data_analysis.py"
                 with open(eval_script_path, 'rb') as file_obj: eval_script = str(file_obj.read())
                 hash = hashlib.sha256("-".join(
-                    [eval_script, inspect.getsource(run_analysis), checksumdir.dirhash(data_dir), str(assert_n_contexts), str(insert_dummy_participants), str(default_profile), str(paired_data_dir)]
-                ).encode()).hexdigest()
+                    [eval_script, inspect.getsource(run_analysis), checksumdir.dirhash(data_dir),
+                     str(assert_n_contexts), str(insert_dummy_participants),
+                     str(default_profile), str(paired_data_dir),
+                     str(RO_neutral), str(RO_neutral_data_dir),
+                     str(no_ips)
+                     ]).encode()).hexdigest()
                 cache_path = f".cache/{hash}.json"
 
                 # check for cache
@@ -594,7 +663,12 @@ for experiment_dir in experiment_dirs:
 
                 else:
                     print("\t\tEvaluating")
-                    eval_data = run_analysis(eval_script_path=eval_script_path, data_dir=data_dir, assert_n_contexts=assert_n_contexts, insert_dummy_participants=insert_dummy_participants, default_profile=default_profile, paired_data_dir=paired_data_dir)
+                    eval_data = run_analysis(
+                        eval_script_path=eval_script_path, data_dir=data_dir, assert_n_contexts=assert_n_contexts,
+                        insert_dummy_participants=insert_dummy_participants, default_profile=default_profile,
+                        paired_data_dir=paired_data_dir, RO_neutral=RO_neutral, RO_neutral_data_dir=RO_neutral_data_dir,
+                        no_ips=no_ips,
+                    )
 
                 with open(cache_path, 'w') as fp:
 
@@ -723,6 +797,9 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
 
         if figure_name.startswith("paired_tolk_ro"):
             scores = np.array([[data[experiment_dir][model][seed_str]['Proxy_stability'][value_to_pair] for seed_str in seed_strings] for model in models])
+        elif RO_neutral:
+            assert metric == "Rank-Order"
+            scores = np.array([[data[experiment_dir][model][seed_str]["Neutral_Rank-Order"] for seed_str in seed_strings] for model in models])
         else:
             scores = np.array([[data[experiment_dir][model][seed_str][metric] for seed_str in seed_strings] for model in models])
 
@@ -768,34 +845,33 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
             axs[plt_i].plot(xs, ys, label=label_)
             axs[plt_i].fill_between(xs, ys - tick_len, ys + tick_len, alpha=0.3)
 
-            if default_profile is not None and figure_name == "tolk_ips_msgs_default_prof":
-
-                # load ro
-                if add_tolkien_ro_curve:
-                    cprint("Loading Rank-order Tolkien Mixtral-Instruct stability from CACHE", "red")
-
-                    xs = np.array(tolkien_ro_curve["xs"])
-                    xs = [x_label_map.get(x, x) for x in xs]
-                    ys = np.array(tolkien_ro_curve["ys"])
-                    shade_len = np.array(tolkien_ro_curve["tick_len"])
-
-                    lab_ = "Rank-Order stability\n  (between contexts)"
-                    col_ = "black"
-                    axs[plt_i].plot(xs, ys, label=lab_, color=col_)
-                    axs[plt_i].fill_between(xs, ys - shade_len, ys + shade_len, alpha=0.3, color=col_)
-
-                if add_tolkien_ipsative_curve:
-                    cprint("Loading Ipsative Tolkien Mixtral-Instruct stability from CACHE", "red")
-
-                    xs = np.array(tolkien_ipsative_curve["xs"])
-                    xs = [x_label_map.get(x, x) for x in xs]
-                    ys = np.array(tolkien_ipsative_curve["ys"])
-                    shade_len = np.array(tolkien_ipsative_curve["tick_len"])
-
-                    lab_ = "Ipsative stability (between contexts)"
-                    col_ = "brown"
-                    axs[plt_i].plot(xs, ys, label=lab_, color=col_, zorder=0)
-                    axs[plt_i].fill_between(xs, ys - shade_len, ys + shade_len, alpha=0.3, color=col_, zorder=0)
+            # if default_profile is not None and figure_name == "tolk_ips_msgs_default_prof":
+                # # load ro
+                # if add_tolkien_ro_curve:
+                #     cprint("Loading Rank-order Tolkien Mixtral-Instruct stability from CACHE", "red")
+                #
+                #     xs = np.array(tolkien_ro_curve["xs"])
+                #     xs = [x_label_map.get(x, x) for x in xs]
+                #     ys = np.array(tolkien_ro_curve["ys"])
+                #     shade_len = np.array(tolkien_ro_curve["tick_len"])
+                #
+                #     lab_ = "Rank-Order stability\n  (between contexts)"
+                #     col_ = "black"
+                #     axs[plt_i].plot(xs, ys, label=lab_, color=col_)
+                #     axs[plt_i].fill_between(xs, ys - shade_len, ys + shade_len, alpha=0.3, color=col_)
+                #
+                # if add_tolkien_ipsative_curve:
+                #     cprint("Loading Ipsative Tolkien Mixtral-Instruct stability from CACHE", "red")
+                #
+                #     xs = np.array(tolkien_ipsative_curve["xs"])
+                #     xs = [x_label_map.get(x, x) for x in xs]
+                #     ys = np.array(tolkien_ipsative_curve["ys"])
+                #     shade_len = np.array(tolkien_ipsative_curve["tick_len"])
+                #
+                #     lab_ = "Ipsative stability (between contexts)"
+                #     col_ = "brown"
+                #     axs[plt_i].plot(xs, ys, label=lab_, color=col_, zorder=0)
+                #     axs[plt_i].fill_between(xs, ys - shade_len, ys + shade_len, alpha=0.3, color=col_, zorder=0)
 
             if metric == "Ipsative" and figure_name == "tolk_ips_msgs":
                 tolkien_ipsative_curve = {
@@ -808,12 +884,40 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
                 with open("tolkien_ipsative_curve_cache.json", "w") as f:
                     json.dump(tolkien_ipsative_curve, f)
 
+            # load ro
+            if add_tolkien_ro_curve:
+                cprint("Loading Rank-order Tolkien Mixtral-Instruct stability from CACHE", "red")
+
+                xs = np.array(tolkien_ro_curve["xs"])
+                xs = [x_label_map.get(x, x) for x in xs]
+                ys = np.array(tolkien_ro_curve["ys"])
+                shade_len = np.array(tolkien_ro_curve["tick_len"])
+
+                lab_ = "Rank-Order stability\n  (between contexts)"
+                col_ = "black"
+                axs[plt_i].plot(xs, ys, label=lab_, color=col_)
+                axs[plt_i].fill_between(xs, ys - shade_len, ys + shade_len, alpha=0.3, color=col_)
+
+            if add_tolkien_ipsative_curve:
+                cprint("Loading Ipsative Tolkien Mixtral-Instruct stability from CACHE", "red")
+
+                xs = np.array(tolkien_ipsative_curve["xs"])
+                xs = [x_label_map.get(x, x) for x in xs]
+                ys = np.array(tolkien_ipsative_curve["ys"])
+                shade_len = np.array(tolkien_ipsative_curve["tick_len"])
+
+                lab_ = "Ipsative stability (between contexts)"
+                col_ = "brown"
+                axs[plt_i].plot(xs, ys, label=lab_, color=col_, zorder=0)
+                axs[plt_i].fill_between(xs, ys - shade_len, ys + shade_len, alpha=0.3, color=col_, zorder=0)
+
+
         else:
             if msgs_ro_tolk:
                 axs[plt_i].bar(xs, ys, yerr=tick_len)
 
                 if metric == "Rank-Order" and figure_name == "tolk_ro_msgs":
-                    tolkien_ipsative_curve = {
+                    tolkien_ro_curve = {
                         "xs": list(xs),
                         "ys": list(ys),
                         "tick_len": list(tick_len),
@@ -821,7 +925,7 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
 
                     cprint("SAVING Rank-order Tolkien Mixtral-Instruct stability to CACHE", "red")
                     with open("tolkien_ro_curve_cache.json", "w") as f:
-                        json.dump(tolkien_ipsative_curve, f)
+                        json.dump(tolkien_ro_curve, f)
 
             else:
                 cs = [family_2_color[model_2_family(x)] for x in xs]
@@ -913,8 +1017,8 @@ for j in range(plt_i + 1, num_rows * num_cols):
 
 plt.tight_layout()
 
-# plt.savefig(f'visualizations/plot.png')
-fig_path =  f'visualizations/{figure_name}.svg'
+# fig_path = f'visualizations/{figure_name}.png'
+fig_path = f'visualizations/{figure_name}.svg'
 print(f"save to: {fig_path}")
 plt.savefig(fig_path)
 plt.show()  # Sh

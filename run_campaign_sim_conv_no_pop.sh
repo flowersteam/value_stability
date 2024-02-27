@@ -96,7 +96,8 @@ mkdir -p $LOG_DIR
 
 source $HOME/.bashrc
 
-conda activate llm_persp
+conda activate llm_stability
+
 
 
 

@@ -2,7 +2,7 @@
 #SBATCH -A imi@a100
 #SBATCH -C a100
 #SBATCH --time=03:59:59
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 #SBATCH --array=0-29 # themes x n_seeds -> 6x5
 #SBATCH -o slurm_logs/sb_log_%A_%a.out
 #SBATCH -e slurm_logs/sb_log_%A_%a.err
@@ -13,11 +13,11 @@
 # Set the questionnaire and population (uncomment he corresponding 4 lines)
 ##########################################################
 
-## PVQ - tolkien characters
-test_tag="pvq"
-experiment_name="pvq_test"
-data_dir="data_pvq"
-population_type="tolkien_characters"
+### PVQ - tolkien characters
+#test_tag="pvq"
+#experiment_name="pvq_test"
+#data_dir="data_pvq"
+#population_type="tolkien_characters"
 
 ### PVQ - real world persona
 #test_tag="pvq"
@@ -25,11 +25,17 @@ population_type="tolkien_characters"
 #data_dir="data_pvq"
 #population_type="famous_people"
 
-## Donation - tolkien characters
+### Donation - tolkien characters
 #test_tag="tolkien_donation"
 #experiment_name="tolkien_donation_test"
 #data_dir="data_tolkien_donation"
 #population_type="tolkien_characters"
+
+### Bag - tolkien characters
+test_tag="tolkien_bag"
+experiment_name="tolkien_bag_test"
+data_dir="data_tolkien_bag"
+population_type="tolkien_characters"
 
 #####################################################
 
@@ -111,7 +117,7 @@ mkdir -p $LOG_DIR
 
 source $HOME/.bashrc
 
-conda activate llm_persp
+conda activate llm_stability
 
 
 if [[ $engine == *"Mistral"* ]] || [[ $engine == *"Mixtral"* ]]; then

@@ -86,7 +86,6 @@ wsproto==1.2.0
 yarl==1.8.2
 zipp==3.15.0
 tiktoken==0.5.1
-matplotlib
 pandas
 torch==1.13.1
 # accelerate==0.18.0
@@ -99,3 +98,5 @@ protobuf==3.20.1
 # bs4
 scipy==1.11.0
 accelerate==0.24.0
+einops==0.7.0
+transformers_stream_generator==0.0.4
