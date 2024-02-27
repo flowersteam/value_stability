@@ -1,9 +1,10 @@
 visualizations/
-dummy_viz/
 models/
 data/*
 logs/*
-.idea
+.idea/
 results/
-.cache/*
+.cache/
 *__pycache__*
+backup_run_scripts/
+old_results
