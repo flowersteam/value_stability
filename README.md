@@ -10,11 +10,6 @@ conda create -n llm_stability python=3.9
 conda activate llm_persp
 cd test/
 pip install -r requirements.txt 
-
-# install transformers
-pip install git+https://github.com/huggingface/transformers.git
-pip install -i https://test.pypi.org/simple/ bitsandbytes
-conda install cudatoolkit -y
 ```
 
 
@@ -55,7 +50,7 @@ The following command evaluates the Mistral-7B-Instruct-v0.2 model (```model_idx
 sbatch run_campaign_sim_conv_pvq_seeds.sh <model_idx>
 ```
 
-Here is a list of models and their indices (this correponds to the index in the model list in run_campain*.sh scripts) :
+Here is a list of models and their indices (this correponds to the index in the model list in run_campain*.sh scripts):
 
 | Model | model_idx |
 |-------|----------------|
