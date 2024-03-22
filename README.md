@@ -49,13 +49,37 @@ This will evaluate a dummy model, which chooses random answers on the PVQ questi
 All the experiments in the paper are shown in ```run_campain*.sh``` scripts.
 
 These are slurm scripts and enable parallel evaluation of different topics and seeds. These scripts require an argument, which defines the model.
-The following command evaluates the Mistral-Instruct-v0.2 model:
+The following command evaluates the Mistral-7B-Instruct-v0.2 model (```model_idx=7```):
 
 ```
-sbatch run_campaign_sim_conv_pvq_seeds.sh 7
+sbatch run_campaign_sim_conv_pvq_seeds.sh <model_idx>
 ```
 
-Those scripts require setting the population and the questionnaire. They can easily be changed following the scripts comments.
+Here is a list of models and their indices (this correponds to the index in the model list in run_campain*.sh scripts) :
+
+| Model | model_idx |
+|-------|----------------|
+|llama_2_7b| 0 |
+|llama_2_13b| 1 |
+|llama_2_7b_chat| 2 |
+|llama_2_13b_chat| 3 |
+|zephyr-7b-beta| 4 |
+|Mistral-7B-v0.1| 5 |
+|Mistral-7B-Instruct-v0.1| 6 |
+|Mistral-7B-Instruct-v0.2| 7 |
+|llama_2_70b| 8 |
+|llama_2_70b_chat| 9 |
+|Mixtral-8x7B-v0.1-4b| 10 |
+|Mixtral-8x7B-Instruct-v0.1-4b| 11 |
+|Mixtral-8x7B-v0.1| 12 |
+|Mixtral-8x7B-Instruct-v0.1|13 |
+|phi-2| 14 |
+|phi-1| 15 |
+|Qwen-72B| 17 |
+|Qwen-14B| 18 |
+|Qwen-7B| 19 |
+
+Those scripts also require setting the population and the questionnaire. They can easily be changed following the scripts comments.
 By default, they are set to fictional characters and PVQ:
 ```
 ## PVQ - tolkien characters
@@ -96,12 +120,12 @@ This means that slurm would run **30 parallel jobs** corresponding to 6 themes (
 
 You can run the 30 evaluations sequentially on a regular machine as follows:
 ```
-for i in {0..30}; do SLURM_ARRAY_TASK_ID=$i bash run_campaign_sim_conv_pvq_seeds.sh ; done
+for i in {0..29}; do SLURM_ARRAY_TASK_ID=$i bash run_campaign_sim_conv_pvq_seeds.sh <model_idx> ; done
 ```
 
 or in parallel as follows:
 ```
-for i in {0..30}; do SLURM_ARRAY_TASK_ID=$i bash run_campaign_sim_conv_pvq_seeds.sh & done
+for i in {0..29}; do SLURM_ARRAY_TASK_ID=$i bash run_campaign_sim_conv_pvq_seeds.sh <model_idx> & done
 ```
 
 
