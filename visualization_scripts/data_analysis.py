@@ -9,10 +9,8 @@ import matplotlib.pyplot as plt
 import re
 import numpy as np
 from termcolor import colored
-import scipy.stats as stats
 import itertools
-from scipy.stats import tukey_hsd, sem, rankdata
-from scipy.stats import pearsonr, spearmanr, ConstantInputWarning
+from scipy.stats import rankdata, spearmanr, ConstantInputWarning
 from collections import defaultdict
 
 
@@ -45,46 +43,13 @@ def load_data(directories):
     # load data
     data = {}
     for i, directory in enumerate(directories):
-        if not os.path.isdir(directory):
-            continue
-
         results_json_path = os.path.join(directory, 'results.json')
 
-        if not os.path.isfile(results_json_path):
+        if not os.path.isdir(directory) or not os.path.isfile(results_json_path):
             continue
 
         with open(results_json_path, 'r') as f:
             dir_data = json.load(f)
-
-        test_name = extract_test_set_name({directory: dir_data})
-
-        # parse tolkien
-
-        # separated fair unfair races by default
-        parse_metrics = True  # better with fair/unfair
-
-        if parse_metrics:
-
-            def parse_dir(d):
-
-                if "tolkien_donation" in directory:
-                    # return {"Donated": np.mean(list(map(float, d.values())))}
-                    return d
-
-                elif "pvq" in directory:
-                    return d
-
-                else:
-                    return d
-
-            dir_data['metrics'][test_name] = parse_dir(dir_data['metrics'][test_name])
-
-            dir_data['per_permutation_metrics'] = [
-                {test_name: parse_dir(d[test_name])} for d in dir_data['per_permutation_metrics']
-            ]
-            dir_data['per_simulated_participant_metrics'] = [
-                {test_name: parse_dir(d[test_name])} for d in dir_data['per_simulated_participant_metrics']
-            ]
 
         data[directory] = dir_data
 
@@ -99,7 +64,7 @@ def compute_ipsative_stability(dir_2_data, keys, default_profile=None):
     print(colored("--------------------------------------------------", "green"))
 
     # order of contexts - avg over permutations last (average r)
-    print("Pearson Correlation (between contexts) - values order (average r)")
+    print("Correlation (between contexts) - values order (average r)")
     key_orders = defaultdict(dict)
     part_scores = defaultdict(lambda: defaultdict(dict))
 
@@ -116,11 +81,7 @@ def compute_ipsative_stability(dir_2_data, keys, default_profile=None):
                 scores = dir_2_data[d]["per_permutation_metrics"][p_i][test_set_name][key]
 
                 if "pvq" in test_set_name:
-                    # todo: remove
-                    average_part_answer = np.array(dir_2_data[d]["answers"][p_i][test_set_name])[:, 1].astype(float).mean()
-                    scores_ = scores - average_part_answer
                     scores = per_part_normalized_scores(dir_2_data, d, test_set_name, key)[p_i]
-                    assert scores == scores_
 
                 part_scores[part][d][key] = scores
 
@@ -141,7 +102,7 @@ def compute_ipsative_stability(dir_2_data, keys, default_profile=None):
 
             for part in population:
                 scores_ = [part_scores[part][dir_][k] for k in keys]
-                corr = compute_correlation(scores_, default_profile, spearman, insert_dummy=args.insert_dummy)
+                corr = compute_correlation(scores_, default_profile)
 
                 dir_stabilities[part][dir_].append(corr)
 
@@ -163,7 +124,7 @@ def compute_ipsative_stability(dir_2_data, keys, default_profile=None):
                 scores_1 = [part_scores[part][dir1][k] for k in keys]
                 scores_2 = [part_scores[part][dir2][k] for k in keys]
 
-                corr = compute_correlation(scores_1, scores_2, spearman, insert_dummy=args.insert_dummy)
+                corr = compute_correlation(scores_1, scores_2)
 
                 dir_stabilities[part][dir1].append(corr)
                 dir_stabilities[part][dir2].append(corr)
@@ -196,9 +157,9 @@ def compute_paired_rank_order_stability(dir_2_data_1, dir_2_data_2, key_1, key_2
         print(colored("PAIRED RANK ORDER STABILITY", "green"))
         print(colored("--------------------------------------------------", "green"))
 
-        print("Rank Order stability - Pearson Correlation in simulated participant order (between two contexts)\n")
+        print("Rank Order stability - Correlation in simulated participant order (between two contexts)\n")
 
-    corrs = defaultdict(list)
+    corrs = []
 
     if directories_1 is None or directories_2 is None:
         directories_1, directories_2 = list(dir_2_data_1.keys()), list(dir_2_data_2.keys())
@@ -220,33 +181,31 @@ def compute_paired_rank_order_stability(dir_2_data_1, dir_2_data_2, key_1, key_2
         if "pvq" in test_set_name_2:
             scores_2 = per_part_normalized_scores(dir_2_data, dir_2, test_set_name_2, key_2)
 
-        correlation = compute_correlation(scores_1, scores_2, spearman, insert_dummy=args.insert_dummy)
+        correlation = compute_correlation(scores_1, scores_2)
 
         if verbose:
             print(f"{lab_1} - {lab_2} : {correlation}")
 
-        corrs[key_1].append(correlation)
+        corrs.append(correlation)
 
         key_dir_corrs[key_1][dir_1].append(correlation)
         key_dir_corrs[key_1][dir_2].append(correlation)
 
-    key_rank_order_stabilities = {key_1: np.mean(corrs[key_1])}
+    key_rank_order_stabilities = {key_1: np.mean(corrs)}
     mean_stabilities = list(key_rank_order_stabilities.values())
 
     mean_rank_order_stability = np.mean(mean_stabilities)
 
-    all_corrs = list(itertools.chain(*corrs.values()))
-
     if verbose:
         print(f"\nAverage over context changes ({len(directories)}) and values ({len(keys)})")
-        print_aggregated_correlation_stats(all_corrs)
+        print_aggregated_correlation_stats(corrs)
 
     key_dir_corrs = {
         k: {
             d: np.mean(v_) for d, v_ in v.items()
         } for k, v in key_dir_corrs.items()}
 
-    return mean_rank_order_stability, key_rank_order_stabilities, key_dir_corrs
+    return mean_rank_order_stability, key_rank_order_stabilities, key_dir_corrs, corrs
 
 def compute_rank_order_stability(dir_2_data, keys):
 
@@ -254,11 +213,10 @@ def compute_rank_order_stability(dir_2_data, keys):
     print(colored("RANK ORDER STABILITY", "green"))
     print(colored("--------------------------------------------------", "green"))
 
-    print("Rank Order stability - Pearson Correlation in simulated participant order (between two contexts)\n")
+    print("Rank Order stability - Correlation in simulated participant order (between two contexts)\n")
     corrs = defaultdict(list)
 
     directories = list(dir_2_data.keys())
-
 
     print(" ".ljust(35, ' ') + "& " + " & ".join(keys + ["Mean"]) + " \\\\")
 
@@ -281,7 +239,7 @@ def compute_rank_order_stability(dir_2_data, keys):
                 scores_1 = per_part_normalized_scores(dir_2_data, dir_1, test_set_name, key)
                 scores_2 = per_part_normalized_scores(dir_2_data, dir_2, test_set_name, key)
 
-            correlation = compute_correlation(scores_1, scores_2, spearman, insert_dummy=args.insert_dummy)
+            correlation = compute_correlation(scores_1, scores_2)
 
             corrs[key].append(correlation)
 
@@ -309,9 +267,6 @@ def compute_rank_order_stability(dir_2_data, keys):
     latex_table_row = "\\bf Mean".ljust(35) + "& " + " & ".join([f"{s:.2f}" for s in mean_stabilities] + [colored(f"{mean_rank_order_stability:.2f}", "blue")]) + " \\\\"
     print(latex_table_row)
 
-    # print("\nSimulated participant order stability due to perspective change (avg over context changes)")
-    # print_dict_values(permutation_order_stabilities)
-
     print(f"\nAverage over context changes ({len(directories)}) and values ({len(keys)})")
     all_corrs = list(itertools.chain(*corrs.values()))
     print_aggregated_correlation_stats(all_corrs)
@@ -320,165 +275,7 @@ def compute_rank_order_stability(dir_2_data, keys):
           d: np.mean(v_) for d, v_ in v.items()
         } for k, v in key_dir_corrs.items()}
 
-    return mean_rank_order_stability, key_rank_order_stabilities, key_dir_corrs
-
-
-def compute_correspondence(dir_2_data):
-    # normalized_evaluation_data = []
-    notnorm_evaluation_data = []
-
-    primary_value_alignments = []
-    mean_vars = []
-    labels = []
-
-    for dir_i, (dir, data) in enumerate(dir_2_data.items()):
-
-        labels.append(dir_to_label(dir))
-        # normalized_evaluation_data.append([])
-        notnorm_evaluation_data.append([])
-
-        if all(["Primary Values".lower() in d.lower() for d in directories]):
-            profile = {}
-            # extract values from profile string
-            if "params" in data:
-                profile_str = data['params']['profile']
-            else:
-                profile_str = dir[dir.rindex("profile"):dir.index("_2023")]
-
-            for item in profile_str.split(';'):
-                key, value = item.split(':')
-                profile[key] = value
-
-            primary_values = profile["Primary values"].split(",")
-
-            if "Primary values" not in profile:
-                raise ValueError(f"Primary values are not in the profile: {profile}.")
-
-            assert all([prim_v in test_set_values for prim_v in primary_values])
-        else:
-            primary_values = None
-
-        normalizing_constants = {
-            "pvq_male": defaultdict(lambda: 5),
-            "pvq_female": defaultdict(lambda: 5),
-            "pvq_auto": defaultdict(lambda: 5),
-            "hofstede": {
-                "Power Distance": 2 * 300,
-                "Individualism": 2 * 350,
-                "Masculinity": 2 * 350,
-                "Uncertainty Avoidance": 2 * 325,
-                "Long-Term Orientation": 2 * 325,
-                "Indulgence": 2 * 375,
-            },
-            "big5_50": defaultdict(lambda: 50),
-            "tolkien_donation": defaultdict(lambda: 1),
-            "tolkien_bag": defaultdict(lambda: 1),
-        }
-
-        normalizing_offset = {
-            "pvq_male": defaultdict(lambda: -1),
-            "pvq_female": defaultdict(lambda: -1),
-            "pvq_auto": defaultdict(lambda: -1),
-            "hofstede": {
-                "Power Distance": 300,
-                "Individualism": 350,
-                "Masculinity": 350,
-                "Uncertainty Avoidance": 325,
-                "Long-Term Orientation": 325,
-                "Indulgence": 375,
-            },
-            "big5_50": defaultdict(lambda: 0),
-            "tolkien_donation": defaultdict(lambda: 0),
-            "tolkien_bag": defaultdict(lambda: 0),
-        }
-
-        per_value_norm_scores = defaultdict(list)
-
-        for perm_i, perm_metrics in enumerate(data["per_permutation_metrics"]):
-
-            # we normalize by (x+normalizing_offset)/normalizing_constant
-            assert len(perm_metrics.keys()) == 1
-            test_set_name = list(perm_metrics.keys())[0]
-            notnorm_perm_metrics = {val: perm_metrics[test_set_name][val] for val in test_set_values}
-
-            norm_perm_metrics = {
-                val: (
-                             perm_metrics[test_set_name][val] + normalizing_offset[test_set_name][val]
-                     ) / normalizing_constants[test_set_name][val] for val in test_set_values
-            }
-
-            for val, score in norm_perm_metrics.items():
-                per_value_norm_scores[val].append(score)
-
-            if primary_values:
-                avg_primary_values = np.mean([norm_perm_metrics[val] for val in primary_values])
-                avg_other_values = np.mean(
-                    [norm_perm_metrics[val] for val in list(set(test_set_values) - set(primary_values))])
-                perm_alignment = avg_primary_values - avg_other_values
-                # print("permutation alignment: ", perm_alignment)
-                primary_value_alignments.append(perm_alignment)
-
-            # normalized_evaluation_data[dir_i].append([norm_perm_metrics[v] for v in test_set_values])
-            notnorm_evaluation_data[dir_i].append([notnorm_perm_metrics[v] for v in test_set_values])
-
-        # mean (over values/traits) of vars (over permutations)
-        mean_vars.append(np.mean([np.var(norm_scores) for norm_scores in per_value_norm_scores.values()]))
-
-        if primary_values:
-            perspective_value_alignment = np.mean(
-                primary_value_alignments[-len(data["per_permutation_metrics"]):])
-
-            # dump alignments to json
-
-            dump_json_path = dir + "/alignments.json"
-            with open(dump_json_path, 'w') as f:
-                json.dump(primary_value_alignments[-len(data["per_permutation_metrics"]):], f)
-
-            print(f"Primary value alignment for {primary_values}: {perspective_value_alignment}.")
-
-    if primary_values:
-        # todo: confirm this
-        mean_primary_value_alignment = np.mean(primary_value_alignments)
-        print(colored(f"Mean primary value alignment (over all): {round(mean_primary_value_alignment, 3)}", "green"))
-
-    # mean over contexts
-    # mean_var = np.mean(mean_vars)
-
-    # all_evaluation_data = (n_persp, n_perm, n_values/traits)
-    # normalized_evaluation_data = np.array(normalized_evaluation_data)
-    notnorm_evaluation_data = np.array(notnorm_evaluation_data)
-
-    # Mean and var of answers
-    # per_value_persp_mean = notnorm_evaluation_data.mean(axis=0).mean(axis=0)
-    # # avg over permutation
-    # per_value_persp_std = notnorm_evaluation_data.std(axis=0).mean(axis=0)
-    # # std over both contexts and permutation
-    # per_value_std_std = notnorm_evaluation_data.std(axis=(0, 1))
-    #
-    # print("Per value std of contexts")
-    # for v_, m_, std_, std_std_ in zip(test_set_values, per_value_persp_mean, per_value_persp_std,
-    #                                   per_value_std_std):
-    #     print("{:<15} \tM: {:.2f} \tSD (avg perm): {:.2f} \tSD (sd perm) {:.2f}".format(v_, m_, std_, std_std_))
-    # print("{:<15} \tM: {:.2f} \tSD (avg perm): {:.2f} \tSD (sd perm) {:.2f}".format(
-    #     "Mean",
-    #     np.mean(per_value_persp_mean),
-    #     np.mean(per_value_persp_std),
-    #     np.mean(per_value_std_std)
-    # ))
-
-    # print(f"Mean (over values) Variance (over contexts): {mean_variance}")
-    # perm_var = normalized_evaluation_data.var(1).mean()
-    # # var(permut) -> mean (persp, values)
-    # assert np.isclose(perm_var, mean_var)
-    # print(
-    #     f"Simulated participant Var - mean (over values/traits x contexts) of var (over part) (*10^3): {round(perm_var * (10 ** 3), 2)}")
-    #
-    # persp_var = normalized_evaluation_data.mean(1).var(0).mean()
-    # # mean(permut) -> var (persp) -> mean (values)
-    # print(
-    #     f"Context Var - mean (over values/traits) of var (over contexts) of mean (over part) (*10^3): {round(persp_var * (10 ** 3), 2)}")
-
-    return notnorm_evaluation_data, labels
+    return mean_rank_order_stability, key_rank_order_stabilities, key_dir_corrs, corrs
 
 
 def plot_values(part_scores, keys, ips_part_stabilities=None, ips_part_dir_stabilities=None):
@@ -504,21 +301,6 @@ def plot_values(part_scores, keys, ips_part_stabilities=None, ips_part_dir_stabi
     n_dirs = len(directories)
     fig, axs = plt.subplots(n_part_to_plot, n_dirs, figsize=(5 * n_dirs, 5 * len(keys)))
     axs = axs.flatten()
-
-
-    # most stable dir/key on average (a good proxy to show overall correlations of everything)
-    # ref_key = max(key_rank_order_stabilities, key=key_rank_order_stabilities.get)
-    # dir_stabilities = {dir: np.mean(key_dir_stabilities[k][dir]) for k in keys for dir in directories}
-    # ref_dir = max(dir_stabilities, key=dir_stabilities.get)
-
-    # the most stable dir/key pair
-    # ref_key = max(key_dir_stabilities, key=lambda d: max(key_dir_stabilities[d].values())) # key with the most stable key-dir pair
-    # ref_dir = max(key_dir_stabilities[ref_key], key=key_dir_stabilities[ref_key].get)
-
-    # manual set
-    # ref_dir = directories[0]
-    # ref_key = keys[0]
-
 
     for part_i, part in enumerate(part_scores):
 
@@ -565,7 +347,6 @@ def plot_values(part_scores, keys, ips_part_stabilities=None, ips_part_dir_stabi
     return mean_rank_order_stability
 
 def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_stabilities=None):
-
 
     # extract data
     directories = list(dir_2_data.keys())
@@ -616,22 +397,16 @@ def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_s
         "Gothmog (Balrog)", "Lungorthin", "Durin's Bane", "Thuringwethil", "Shelob", "Morgoth", "Sauron"
 
         # famous
-                                                                                                "Joseph Stalin", "Martin Luther King", "Marilyn Monroe", "Elvis Presley", "Dalai Lama", "Henry Ford",
+        "Joseph Stalin", "Martin Luther King", "Marilyn Monroe", "Elvis Presley", "Dalai Lama", "Henry Ford",
         "Nelson Mandela", "Mahatma Gandhi", "Thomas Edison",
     ]
-    # names_to_plot = [
-    #     # tolkien
-    #     "Gandalf", "Sauron", "Peregrin Took", "Frodo Baggins", "Morgoth", "Galadriel", "Legolas", "Gimli", "Aragorn", "Shelob", "Gollum",
-    #     # famous
-    #     "Joseph Stalin", "Martin Luther King", "Marilyn Monroe", "Elvis Presley", "Dalai Lama", "Henry Ford",
-    #     "Nelson Mandela", "Mahatma Gandhi", "Thomas Edison",
-    # ]
 
     for key_i, key in enumerate(keys):
 
         # # one ref for each key (row)
         ref_key = key
         ref_dir = max(key_dir_stabilities[ref_key], key=key_dir_stabilities[ref_key].get)
+        # ref_dir = [d for d in key_dir_stabilities[ref_key] if "chat___" in d][0]
 
         ref_pop = plot_data[ref_key][ref_dir]
         ref_indices = ref_pop.argsort()
@@ -674,11 +449,9 @@ def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_s
                 elif p_lab in good_guys:
                     axs[key_i*n_dirs+dir_i].get_xticklabels()[lab_i].set_color("green")
 
-
             for t in ticks:
                 axs[key_i*n_dirs + dir_i].axvline(t, linestyle=":", linewidth=0.5)
             axs[key_i*n_dirs + dir_i].scatter(ticks, [ys[t] for t in ticks], s=7, c="r")
-
 
             if key == ref_key and dir == ref_dir:
 
@@ -703,159 +476,22 @@ def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_s
 
     return mean_rank_order_stability
 
-def statistical_analysis_and_cohen_ds(notnorm_evaluation_data, dir_2_data):
-    p_limit = 0.05
-    # p_limit = 0.005
-    # p_limit = 0.001
-
-    # group_p_limit = 0.001
-    group_p_limit = p_limit / len(test_set_values)  # additional bonferroni correction
-
-    print("testing p-value: ", group_p_limit)
-    if "pvq" in test_set_name:
-        # PVQ centering - is this reccomended in this manual? # todo: do properly all questions
-
-        n_values = notnorm_evaluation_data.shape[2]
-        notnorm_evaluation_data = notnorm_evaluation_data - np.repeat(notnorm_evaluation_data.mean(2)[:,:, np.newaxis], n_values, axis=2)
-
-    cohens_ds = defaultdict(list)
-
-    for val_i, val in enumerate(test_set_values):
-        # value_data = normalized_evaluation_data[:, :, val_i] # value_data = (n_perspectives, n_permutations)
-        value_data = notnorm_evaluation_data[:, :, val_i] # value_data = (n_contexts, n_permutations)
-
-        print(f"\n----------------{val}---------------------")
-
-        # standard ANOVA
-        if value_data.var() == 0:
-            pvalue = np.inf
-        else:
-            _, pvalue = stats.f_oneway(*value_data)
-
-        if pvalue >= group_p_limit:
-            different_distr.append(False)
-            print(colored(f"p(ANOVA): {pvalue} > {group_p_limit}", "red"))
-            posthoc_test = False
-        else:
-            different_distr.append(True)
-            print(colored(f"p(ANOVA): {pvalue} < {group_p_limit}", "green"))
-            posthoc_test = True
-
-        # do posthocs and compute cohen's ds
-        pairs_ind = list(itertools.combinations(range(len(value_data)), 2))
-
-        if posthoc_test:
-            tukey_res = tukey_hsd(*value_data)  # Tukey test
-
-        latex_labels = []
-        print("\tTukey (p limit) :", group_p_limit)
-        for pair_ind in pairs_ind:
-
-            # cohen's d
-            d = cohen_d(value_data[pair_ind[0]], value_data[pair_ind[1]])
-            cohens_ds[val].append(d)
-
-            latex_labels.append(f"{labels[pair_ind[0]]} - {labels[pair_ind[1]]} & ")
-
-            # posthoc
-            if posthoc_test:
-                res_pvalue = tukey_res.pvalue[pair_ind[0], pair_ind[1]]
-                if res_pvalue < p_limit:
-                    print("\t{} - {} : p -> {:.8f} d -> {:.8f}".format(
-                        labels[pair_ind[0]],
-                        labels[pair_ind[1]],
-                        res_pvalue, d)
-                    )
-
-
-    # Mean-level
-    print(colored("\n\n--------------------------------------------------", "green"))
-    print(colored("MEAN-LEVEL STABILITY ", "green"))
-    print(colored("--------------------------------------------------", "green"))
-
-    print(" & ".join(cohens_ds.keys()) + " Mean \\\\")
-    for lab_i, latex_lab in enumerate(latex_labels):
-        value_stabilities = [v[lab_i] for v in cohens_ds.values()]
-        value_stabilities = value_stabilities + [np.mean(np.abs(value_stabilities))]
-        latex_row = latex_lab + " & ".join([f"{v:.2f}" for v in value_stabilities]) + " \\\\"
-        print(latex_row.replace("_", "\\_"))
-
-    avg_abs_cohens_ds = {k: np.mean(np.abs(v)) for k, v in cohens_ds.items()}
-
-    mean_mean_level_stability = np.mean(list(avg_abs_cohens_ds.values()))
-    latex_str = "\\bf Mean & " + \
-                " & ".join([f"{v:.2f}" for v in avg_abs_cohens_ds.values()]) + \
-                " & " + colored(f"{mean_mean_level_stability:.2f}", "blue") + " \\\\"
-
-    print(latex_str)
-
-    print("Average absolute cohen's ds:")
-    print_dict_values(avg_abs_cohens_ds)
-
-
-    # plot bars
-    if args.plot_mean:
-
-        for distr_i, different in enumerate(different_distr):
-            if not different:
-                # anova didn't reject - same distr
-                plt.bar(distr_i, 300, width=all_bars_width*1.3, color="lightgray")
-                plt.bar(distr_i, -300, width=all_bars_width*1.3, color="lightgray")
-
-        for i, directory in enumerate(directories):
-
-            if not os.path.isdir(directory):
-                continue
-
-            results_json_path = os.path.join(directory, 'results.json')
-
-            if not os.path.isfile(results_json_path):
-                continue
-
-            data = dir_2_data[directory]
-
-            offset = -all_bars_width/2 + (i/num_dirs)*all_bars_width
-            keys, sorted_keys, keys_vals = plot_baseline(data, ax, directory, offset, bar_width=bar_width, min_bar_size=0.05)
-            assert keys == test_set_values
-
-    print()
-    return test_set_values, mean_mean_level_stability
-
-def is_strictly_increasing(lst):
-    return all(x <= y for x, y in zip(lst, lst[1:]))
-
-
-def print_dict_values(d):
-    print("\t".join([f"{k:<10}" for k in list(d.keys()) + ["Mean"]]))
-    print("\t\t".join([f"{np.round(s, 2):.2}" for s in list(d.values()) + [np.mean(list(d.values()))]]))
-
 
 warnings.filterwarnings('error', category=ConstantInputWarning)
-def compute_correlation(scores_1, scores_2, spearman, insert_dummy):
-
-    # trick to overcome bad collapse evaluation
-    # assert not insert_dummy # don't use this
-    if insert_dummy:
-        scores_1 = np.insert(scores_1, 0, [-100])
-        scores_2 = np.insert(scores_2, 0, [-100])
+def compute_correlation(scores_1, scores_2):
 
     try:
-        if spearman:
-            correlation, _ = spearmanr(scores_1, scores_2)
-        else:
-            correlation, _ = pearsonr(scores_1, scores_2)
+        correlation, _ = spearmanr(scores_1, scores_2)
 
     except ConstantInputWarning:
         # return np.nan
 
-        # not ideal but no other way (apart from dummy insert above)
+        # not ideal but no other way
         if len(set(scores_1)) == 1 and len(set(scores_2)) == 1:
             # both constant
-            # correlation = 1.0
-            print(f"Collapse setting 1.")
             return np.nan
         else:
-            # one constant  # todo: return to this is 0, above is nan
+            # one constant  -> correlation is 0 (happens very rarely, in ipsative)
             correlation = 0.0
             # print(f"Collapse setting 0.")
             # return np.nan
@@ -870,9 +506,6 @@ def dir_to_label(directory):
 
     elif "simulate_conv" in directory:
         label = extract_value(directory, "_simulate_conv_")
-
-    elif "weather" in directory:
-        label = extract_value(directory, "_weather_")
 
     elif "no_profile" in directory:
         label = extract_value(directory, "_format_")
@@ -905,47 +538,6 @@ def extract_value(directory, key="_lotr_character_"):
     label = label[start_index:end_index]
 
     return label
-
-def extract_profile(directory):
-    label = os.path.basename(directory)
-
-    if "_profile_" in label:
-        start_index = label.find("_profile_") + len("_profile_")
-
-    elif "_ntrain_" in label:
-        start_index = label.find("ntrain_") + len("ntrain_") + 1
-
-    else:
-        start_index = 0
-
-    if "_2023" in label:
-        end_index = label.find("_2023")
-    else:
-        end_index = len(label)
-
-    label = label[start_index:end_index]
-
-    return label
-def subjects_average(data, subjects_to_average, metric="accuracy"):
-    present_subjects = list(data['metrics'].keys())
-
-    # all subjects to average are present
-    if all(avg_s in present_subjects for avg_s in subjects_to_average):
-        return np.mean([data['metrics'][s][metric] for s in subjects_to_average])
-    else:
-        return None
-
-
-def extract_by_key(directory, key="Hobbies"):
-    if key is None:
-        return os.path.basename(directory)
-
-    pattern = rf'{key}:([^_]+)'
-    match = re.search(pattern, directory)
-    if match:
-        return match.group(1)
-    else:
-        return 'Unknown'
 
 
 def print_aggregated_correlation_stats(cs):
@@ -992,157 +584,6 @@ def print_correlation_stats(cs, header=False, label="\t", color=None):
     return statistics
 
 
-def cohen_d(data_1, data_2):
-    # Compute means
-    mean1 = data_1.mean()
-    mean2 = data_2.mean()
-
-    # Compute sample variances
-    var1 = data_1.var()
-    var2 = data_2.var()
-
-    n1 = len(data_1)
-    n2 = len(data_2)
-
-    # Compute pooled standard deviation
-    s_pooled = np.sqrt(((n1 - 1) * var1 + (n1 - 1) * var2) / (n1 + n2 - 2))
-
-    # Compute Cohen's d
-    d = (mean1 - mean2) / s_pooled
-
-    return d
-
-
-def plot_baseline(data, ax, directory, offset, subj=None, bar_width=1.0, min_bar_size=0.1):
-
-    if subj:
-        draw_metrics = data['metrics'][subj]
-
-    else:
-        # only one subject
-        subjects = list(data['metrics'].keys())
-
-        if len(subjects) == 1:
-            assert len(list(data['metrics'].values())) == 1
-            draw_metrics = list(data['metrics'].values())[0]
-
-        # only one metric
-        elif (
-                # all the subjects have only one metric
-                len(set([len(v.keys()) for v in data['metrics'].values()])) == 1
-        ) and (
-                # that is the same metric
-                len(set([list(v.keys())[0] for v in data['metrics'].values()])) == 1
-        ):
-            draw_metrics = {}
-            for subj, metrics in data['metrics'].items():
-                # only one metric
-                assert len(metrics.keys()) == 1
-                value = list(metrics.values())[0]
-
-                draw_metrics[subj] = value
-
-        else:
-            draw_metrics = {}
-            for subj, metrics in data['metrics'].items():
-                for metric, value in metrics.items():
-                    draw_metrics[f"{subj}_{metric}"] = value
-
-    keys = list(draw_metrics.keys())
-
-    key_indices = {key: i for i, key in enumerate(keys)}
-
-    perm_vals = []
-    for perm_m in data['per_permutation_metrics']:
-        perm_vals.append([perm_m[test_set_name][key] for key in keys])
-
-    perm_vals = np.array(perm_vals)
-
-    if "pvq" in test_set_name:
-        # from IPython import embed; embed();
-        # centering PVQ
-        # todo: fix because this mean is not perfect (should be mean of all answers)
-        # this is mean of scores - universalism has 5 questions the rest 4
-        perm_vals = perm_vals - np.repeat(perm_vals.mean(1)[:, np.newaxis], 10, axis=1)
-
-        # np.array([[ans[1] for ans in part['pvq_male']] for part in data['answers']])
-
-    values = perm_vals.mean(0)
-    # errs = perm_vals.std(0)
-
-    errs = sem(perm_vals)
-
-    label = dir_to_label(directory)
-
-    keys_vals = dict(zip(keys, values))
-    sorted_keys = [k for k, v in sorted(keys_vals.items(), key=lambda item: item[1], reverse=True)]
-
-    x_values = [key_indices[key] + offset for key in keys]
-
-    x_values = [v+bar_width/2 for v in x_values]
-
-    # create dummy bars if 0
-    v_to_add = []
-    x_to_add = []
-
-    for ind, v in enumerate(values):
-        if abs(v) < bar_width/2:
-            v_to_add.extend([min_bar_size, -min_bar_size])
-            x_to_add.extend([x_values[ind], x_values[ind]])
-
-    if v_to_add:
-        values = np.array(list(values) + v_to_add)
-        x_values = np.array(list(x_values) + x_to_add)
-        errs = np.array(list(errs) + [0.0]*len(x_to_add))
-
-    assert len(errs) == len(values)
-    ax.bar(x_values, values, yerr=errs, label=label, width=bar_width, color=None)
-
-    # set y-axis limits
-    if "pvq" in test_set_name:
-        # ax.set_ylim([-3, 3]) # append
-        ax.set_ylim([-2.9, 2.9])
-
-    elif test_set_name == "hofstede":
-        # ax.set_ylim([-350, 350]) # append
-        ax.set_ylim([-130, 230])
-
-    elif test_set_name == "big5_50":
-        ax.set_ylim([0, 55])
-
-    elif test_set_name == "big5_100":
-        ax.set_ylim([0, 110])
-
-    elif test_set_name == "tolkien_ultimatum":
-        ax.set_ylim([0, 1])
-
-    elif test_set_name == "tolkien_donation":
-        ax.set_ylim([0, 10])
-
-    else:
-        ax.set_ylim([0, max([6, *values])+0.1])
-
-    # ax.set_xlabel('Values', fontsize=30)
-    ax.set_ylabel('Scores', fontsize=30)
-
-
-    if not args.separate_legend:
-        if "lotr" in directories[0]:
-            ax.legend(bbox_to_anchor=(0.5, 1.2), loc="center", fontsize=20, ncols=5)
-        elif "nat_lang_prof" in directories[0]:
-            ax.legend(bbox_to_anchor=(0.5, 1.2), loc="center", fontsize=20, ncols=2)
-        elif "music" in directories[0]:
-            ax.legend(bbox_to_anchor=(0.5, 1.2), loc="center", fontsize=20, ncols=5)
-        elif "hobbies":
-            ax.legend(bbox_to_anchor=(0.5, 1.2), loc="center", fontsize=20, ncols=3)
-        else:
-            ax.legend(loc="best", fontsize=20)
-        # fig.subplots_adjust(left=0.05, right=0.95, top=0.8, bottom=0.35)
-        fig.subplots_adjust(left=0.15, right=0.95, top=0.82, bottom=0.38)
-
-    return keys, sorted_keys, keys_vals
-
-
 if __name__ == '__main__':
     import argparse
 
@@ -1154,7 +595,7 @@ if __name__ == '__main__':
     parser.add_argument('directories', nargs='+', help='directories containing results.json files')
     parser.add_argument('--no-ips', action="store_true")
     parser.add_argument('--plot-save', '-ps', action="store_true")
-    parser.add_argument('--insert-dummy', '-id', action="store_true")
+    parser.add_argument('--no-ignore', action="store_true")
     parser.add_argument('--separate_legend', action="store_true")
     parser.add_argument('--plot-ranks', "-pr", action="store_true")
     parser.add_argument('--plot-ips', "-pi", action="store_true")
@@ -1165,8 +606,6 @@ if __name__ == '__main__':
     parser.add_argument('--result-json-stdout', action="store_true")
     parser.add_argument('--neutral-ranks', action="store_true")
     parser.add_argument('--neutral-dir', type=str)
-
-    # "results/sim_conv_pvq_permutations_msgs/Mixtral-8x7B-Instruct-v0.1/9_msgs/_seed/results_sim_conv_permutations_Mixtral-8x7B-Instruct-v0.1/pvq_test_Mixtral-8x7B-Instruct-v0.1_data_pvq_pvq_auto__permutations_50_permute_options_5_no_profile_True_format_chat___2024_02_14_20_47_27"
     parser.add_argument('--default-profile', type=str, default=None)
     parser.add_argument('--paired-dirs', nargs='+', default=None)
 
@@ -1177,30 +616,19 @@ if __name__ == '__main__':
         import sys
         sys.stdout = open(os.devnull, 'w')
 
-    different_distr = [] # value/traits where the anova test said it's different
-
-    keys_to_plot = None
-
     bar_width = 0.10
     bar_margin = 1.2
-
-    mean_primary_value_alignment = None
-    spearman = True
-    if spearman:
-        print("Spearman")
-
-    if args.insert_dummy:
-        print("Inserting dummy participants.")
 
     if args.plot_mean:
         fig, ax = plt.subplots(figsize=(15, 10))
 
-    ignore = [
-        "religion",
-        "tax",
-        "vacation",
-        "format_chat___",
-    ]
+    if args.no_ignore:
+        ignore = []
+    else:
+        ignore = ["format_chat___"]
+
+    # filter directories without results.json
+    args.directories = [d for d in args.directories if "results.json" in os.listdir(d)]
 
     args.directories = [d for d in args.directories if not any([i in d for i in ignore])]
     num_dirs = len([d for d in args.directories if os.path.isdir(d)])
@@ -1209,19 +637,12 @@ if __name__ == '__main__':
     # chronological order
     directories = args.directories
 
-    # remove directories which contain substrings from the list
-    ignore_patterns = []
-    print("Ignoring patterns: ", ignore_patterns)
-
-    for substring in ignore_patterns:
-        directories = [d for d in directories if substring not in d]
-
     directories = [d for d in directories if os.path.isfile(os.path.join(d, 'results.json'))]
 
     print("Directories:\n\t", "\n\t".join(directories))
 
     if len(directories) < 2:
-        raise IOError(f"Only {len(directories)} result.json files found.")
+        raise IOError(f"Only {len(directories)} result.json files found in {args.directories}.")
 
     if args.assert_n_dirs and (len(directories) != args.assert_n_dirs):
         raise ValueError(f"Wrong number of dirs found {len(directories)} != {args.assert_n_dirs}.")
@@ -1230,20 +651,16 @@ if __name__ == '__main__':
 
     test_set_name = extract_test_set_name(dir_2_data)
     test_set_values = extract_test_set_values(dir_2_data)
-
-    # compute correspondence
-    notnorm_evaluation_data, labels = compute_correspondence(dir_2_data)
-
-    keys, mean_mean_level_stability = statistical_analysis_and_cohen_ds(notnorm_evaluation_data=notnorm_evaluation_data, dir_2_data=dir_2_data)
+    keys = test_set_values
 
     assert directories == list(dir_2_data.keys())
 
-    mean_rank_order_stability, key_rank_order_stabilities, key_dir_stabilities = compute_rank_order_stability(dir_2_data=dir_2_data, keys=keys)
+    mean_rank_order_stability, key_rank_order_stabilities, key_dir_stabilities, all_ro_stabs = compute_rank_order_stability(dir_2_data=dir_2_data, keys=keys)
 
     if len(keys) >= 2 and not args.no_ips:
         mean_ipsative_stability, part_scores, ips_part_stabilities, ips_part_dir_stabilities, all_ips_corrs = compute_ipsative_stability(dir_2_data=dir_2_data, keys=keys)
     else:
-        all_ips_corrs=np.nan
+        all_ips_corrs = np.nan
         mean_ipsative_stability = np.nan
         all_corrs = np.nan
         print(f"IPsative stability is not computed because there only one metric {keys}.")
@@ -1260,7 +677,6 @@ if __name__ == '__main__':
             scores_neut_prof = np.array([d[test_set_name][key] for d in dir_2_data_neut_prof[dir_neut_prof]["per_simulated_participant_metrics"]])
 
             if "pvq" in test_set_name:
-                # todo: remove
                 # extract per participant average answer
                 average_part_answer_neut_prof = np.array([
                     np.array(d[test_set_name])[:, 1].astype(float).mean() for d in dir_2_data_neut_prof[dir_neut_prof]["answers"]
@@ -1298,6 +714,8 @@ if __name__ == '__main__':
 
 
     neutral_rank_order_stability = None
+    all_neutral_ro_stabs = None
+
     if args.neutral_ranks:
         print()
         print(colored("------------------------", "green"))
@@ -1318,9 +736,10 @@ if __name__ == '__main__':
         ]
 
         mean_stability = []
+        all_neutral_ro_stabs = {}
         for value in values_names:
 
-            stab_, _, _ = compute_paired_rank_order_stability(
+            stab_, _, _, all_neutral_ro_stabs_val = compute_paired_rank_order_stability(
                 dir_2_data, dir_2_data_neutral,
                 value, value,
                 "pvq_auto", "pvq_auto",
@@ -1329,20 +748,25 @@ if __name__ == '__main__':
 
             mean_stability.append(stab_)
 
+            all_neutral_ro_stabs[value] = all_neutral_ro_stabs_val
+
         neutral_rank_order_stability = np.mean(mean_stability)
 
         print(f"Mean stability w neutral rank: {neutral_rank_order_stability}")
 
     proxy_stability = None
+    all_proxy_stabs = None
+
     if args.paired_dirs:
 
         print("\n\nPaired Rank-Order stability\n")
+        args.paired_dirs = [d for d in args.paired_dirs if "results.json" in os.listdir(d)]
 
         for dir_, ben_ in zip(args.directories, args.paired_dirs):
             # model and seed should be analogous
             assert dir_.split("/")[2:4] == ben_.split("/")[2:4]
 
-            # get conversation theme
+            # same conversation theme
             assert dir_.split("chat__")[1].split("202")[0] == ben_.split("chat__")[1].split("202")[0]
 
         dir_2_data_neut_prof = load_data(args.paired_dirs)
@@ -1351,14 +775,17 @@ if __name__ == '__main__':
                         "Self-Direction", "Stimulation", "Hedonism"]
 
         proxy_stability = {}
+        all_proxy_stabs = {}
         for value in values_names:
             mean_stability = []
+            all_proxy_stabs[value] = {}
             for race in ["elves", 'dwarves', 'orcs', 'humans', 'hobbits']:
-                mean_paired_rank_order_stability, _, _ = compute_paired_rank_order_stability(
+                mean_paired_rank_order_stability, _, _, all_proxy_stabs_ = compute_paired_rank_order_stability(
                     dir_2_data, dir_2_data_neut_prof,
                     value, f"Donation {race}",
                     "pvq_auto", "tolkien_donation"
                 )
+                all_proxy_stabs[value][race] = all_proxy_stabs_
                 # print(f"{race}: {mean_paired_rank_order_stability}")
                 mean_stability.append(mean_paired_rank_order_stability)
 
@@ -1372,20 +799,22 @@ if __name__ == '__main__':
     print(colored("Aggregated metrics", "green"))
     print(colored("------------------------", "green"))
 
-    print("Mean-Level\tRank-Order\tIpsative")
-    print(f"{mean_mean_level_stability:.4f}\t\t{mean_rank_order_stability:.4f}\t\t{mean_ipsative_stability:.4f}")
+    print("Rank-Order\tIpsative")
+    print(f"{mean_rank_order_stability:.4f}\t\t{mean_ipsative_stability:.4f}")
 
     if args.result_json_stdout:
         sys.stdout = sys.__stdout__
         outputs = {
-            "Mean-Level": mean_mean_level_stability,
             "Rank-Order": mean_rank_order_stability,
+            "All_Rank-Order_stabilities": all_ro_stabs,
             "Ipsative": mean_ipsative_stability,
             "All_Ipsative_corrs": all_ips_corrs,
             "Ipsative_default_profile": mean_ipsative_stability_default_profile,
             "All_Ipsative_corrs_default_profile": all_ips_corrs_default_profile,
             "Proxy_stability": proxy_stability,
+            "All_Proxy_stabilities": all_proxy_stabs,
             "Neutral_Rank-Order": neutral_rank_order_stability,
+            "All_Neutral_Rank-Order_stabilities": all_neutral_ro_stabs,
         }
 
         class NumpyEncoder(json.JSONEncoder):

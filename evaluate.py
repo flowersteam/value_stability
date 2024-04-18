@@ -1,36 +1,44 @@
 import argparse
-import datetime
 import random
-import re
-import json
 from collections import defaultdict
 import os
-
-import matplotlib.pyplot as plt
-import tiktoken
-
-import torch
+import json
+import hashlib
 import time
 import datetime
 import itertools
-
-from personas.utils import simulated_participant_to_name
+import string
 
 from termcolor import colored
 
-hostname = os.uname()[1]
-if hostname == "PTB-09003439":
-    hf_cache_dir = "/home/flowers-user/.cache/huggingface"
-elif "plafrim" in hostname:
-    hf_cache_dir ="/beegfs/gkovac/hf_cache_dir"
-else:
-    hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
+from utils import *
 
+
+import numpy as np
+import pandas as pd
+import torch
+import tiktoken
+
+from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, BitsAndBytesConfig
+from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
+
+from personas.utils import simulated_participant_to_name
+
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_random_exponential,
+)  # for exponential backoff
+
+
+@retry(wait=wait_random_exponential(min=10, max=30), stop=stop_after_attempt(10))
+def completions_with_backoff(client, **kwargs):
+    return client.chat.completions.create(**kwargs)
+
+
+hf_cache_dir = get_hf_cache_dir()
 os.environ['TRANSFORMERS_CACHE'] = hf_cache_dir
-from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, TextStreamer, pipeline
 
-import json
-import hashlib
 
 def construct_messages(prompt, system_message, messages_conv=None, add_query_str=True):
 
@@ -79,8 +87,6 @@ def construct_messages(prompt, system_message, messages_conv=None, add_query_str
 
 def apply_base_model_template(
         messages,
-        simulated_participant,
-        simulated_population_type,
         assistant_label,
         user_label,
         system_label,
@@ -124,24 +130,6 @@ opening_questions_for_themes = {
 }
 
 
-def print_chat_messages(messages):
-    print("*********************")
-    print("Messages:")
-    for msg in messages:
-        print(f"{msg['role'].upper()} : {msg['content']}")
-    print("*********************")
-
-
-def extract_answer_tokens(answers, tokenizer):
-    answer_tokens = {a: [] for a in answers}
-    for tok_ind in range(len(tokenizer)):
-        tok = tokenizer.decode([tok_ind])
-        if tok in answers:
-            answer_tokens[tok].append(tok_ind)
-
-    return answer_tokens
-
-
 def create_permutation_dicts(args, n_options, choices, num_questions, population_size=None):
 
     if args.permute_options:
@@ -152,7 +140,7 @@ def create_permutation_dicts(args, n_options, choices, num_questions, population
 
         if len(set(n_options)) == 1:
 
-            if n_options[0] > 8:
+            if n_options[0] > 9:
                 raise ValueError("Number of options too big. Refactor code below to use it.")
 
             all_permutations = list(itertools.permutations(range(n_options[0])))
@@ -271,7 +259,8 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
     assert args.simulated_conversation_n_messages % 2 == 1  # must be odd so that the last one is GPT as simulated persona
 
     for msg_i in range(args.simulated_conversation_n_messages):
-        print(f"Iter {msg_i}")
+        if args.verbose:
+            print(f"Simulted conv msg {msg_i}")
 
         # assign roles to messages - alternating, last one user
         simulated_conv_messages = create_simulated_messages(conversation, last="user")
@@ -338,22 +327,35 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
             simulated_conv_messages = fix_alternating_msg_order(simulated_conv_messages)
 
         if engine_ == "dummy":
-            response = f"Dummy simulated message no. {msg_i}."
+            response = f"Dummy simulated message no. {msg_i}. This is a filler message it same some extra text so as to help estimate the number of tokens. As the gpt generations is set to 100 tokens max. Here we aim to also 100 tokens message. I am repeating it now. This is a filler message it same some extra text so as to help estimate the number of tokens. As the gpt generations is set to 100 tokens max. Here we aim to also 100 tokens message."
 
         elif "gpt" in engine_:
             assert not args.base_model_template
 
-            print_chat_messages(simulated_conv_messages)
+            if args.verbose:
+                print_chat_messages(simulated_conv_messages)
 
-            c = openai.ChatCompletion.create(
-                model=engine_,
-                messages=simulated_conv_messages,
-                max_tokens=100,
-                n=1,
-                temperature=1.0,
-                request_timeout=30,
-            )
-            response = c['choices'][0]['message']['content']
+            if args.azure_openai:
+                # time.sleep(0.1)
+                c = completions_with_backoff(
+                    client=model,
+                    model=openai_2_azure_tag[engine_],
+                    messages=simulated_conv_messages,
+                    max_tokens=100,
+                    n=1,
+                    temperature=1.0,
+                )
+
+            else:
+                # todo: add backoff
+                c = model.chat.completions.create(
+                    model=engine_,
+                    messages=simulated_conv_messages,
+                    max_tokens=100,
+                    n=1,
+                    temperature=1.0,
+                )
+            response = c.choices[0].message.content
 
         elif "llama_2" in engine_:
 
@@ -364,8 +366,6 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
                     assistant_label=assistant_label,
                     user_label=user_label,
                     system_label=system_label,
-                    simulated_participant=simulated_participant,
-                    simulated_population_type=args.simulated_population_type,
                     add_generation_prompt=True,
                     return_stop_words=True
                 )
@@ -377,8 +377,9 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
 
             else:
                 input_ids = tokenizer.apply_chat_template(simulated_conv_messages, return_tensors="pt", add_generation_prompt=True).to(model.device)
-                print_chat_messages(simulated_conv_messages)
-                stopping_criteria=None
+                if args.verbose:
+                    print_chat_messages(simulated_conv_messages)
+                stopping_criteria = None
 
             output_seq = model.generate(
                 input_ids=input_ids,
@@ -404,8 +405,6 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
                     assistant_label=assistant_label,
                     user_label=user_label,
                     system_label=system_label,
-                    simulated_participant=simulated_participant,
-                    simulated_population_type=args.simulated_population_type,
                     add_generation_prompt=True,
                     return_stop_words=True
                 )
@@ -417,7 +416,8 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
 
             else:
                 input_ids = tokenizer.apply_chat_template(simulated_conv_messages, return_tensors="pt", add_generation_prompt=True).to(model.device)
-                print_chat_messages(simulated_conv_messages)
+                if args.verbose:
+                    print_chat_messages(simulated_conv_messages)
                 stopping_criteria=None
 
             output_seq = model.generate(
@@ -433,7 +433,6 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
             
             # for params: https://huggingface.co/blog/mixtral
             # for params: https://huggingface.co/HuggingFaceH4/zephyr-7b-alpha
-            # what about mistral?
 
             if args.base_model_template:
                 assert args.system_message
@@ -442,8 +441,6 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
                     assistant_label=assistant_label,
                     user_label=user_label,
                     system_label=system_label,
-                    simulated_participant=simulated_participant,
-                    simulated_population_type=args.simulated_population_type,
                     add_generation_prompt=True,
                     return_stop_words=True
                 )
@@ -451,12 +448,14 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
                 assert all([w.upper() in stop_words_up for w in stop_words])
                 stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stop_words_up, tokenizer, input_ids)])
 
-                print(f"\n>>>>>>>>>>>>FORMATTED<<<>>>PROMPT<<<<<<<<<<<<\n{formatted_prompt}\n>>>>>>>>>>><<<<<<<<<<<\n")
+                if args.verbose:
+                    print(f"\n>>>>>>>>>>>>FORMATTED<<<>>>PROMPT<<<<<<<<<<<<\n{formatted_prompt}\n>>>>>>>>>>><<<<<<<<<<<\n")
 
             else:
                 input_ids = tokenizer.apply_chat_template(simulated_conv_messages, return_tensors="pt", add_generation_prompt=True).to(model.device)
-                print_chat_messages(simulated_conv_messages)
-                stopping_criteria=None
+                if args.verbose:
+                    print_chat_messages(simulated_conv_messages)
+                stopping_criteria = None
 
             output_seq = model.generate(
                 input_ids=input_ids,
@@ -482,13 +481,13 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
                 response = response[:stop_word_ind]
 
         conversation.append(response)
-        print(f"--> {response}")
 
+        if args.verbose:
+            print(f"--> {response}")
 
         messages_conv = create_simulated_messages(conversation, last="assistant")
         messages_conv_hash = hash_chat_conv(messages_conv)
 
-    # print_chat_messages(messages_conv)
 
     return messages_conv, messages_conv_hash
 
@@ -504,45 +503,9 @@ def map_number_to_choice(number, inv_permutations_dict):
     return choice
 
 
-def plot_dict(data, savefile=None):
-    # Get the keys and values from the dictionary
-    keys = list(data.keys())
-    values = list(data.values())
-
-    # Create a bar chart with the keys as the x-axis and the values as the y-axis
-    fig, ax = plt.subplots()
-    ax.bar(keys, values)
-
-    # Set the title and axis labels
-    # ax.set_title('Values by Index')
-    ax.set_xlabel('')
-    ax.set_ylabel('Values')
-
-    # Rotate the x-axis labels for readability
-    plt.xticks(rotation=90)
-
-    plt.tight_layout()
-    # Display the plot
-    if savefile is not None:
-        plt.savefig(savefile)
-        print(f'Plot saved to "{savefile}"')
-    else:
-        plt.show()
-
-
 timestamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 print("timestamp:", timestamp)
 
-import openai
-import numpy as np
-import pandas as pd
-import sys
-
-from crop import crop
-
-openai.api_key = os.environ["OPENAI_API_KEY"]
-hidden_key = openai.api_key[:10] + "*" * 10 + openai.api_key[20:]
-print("OPENAI KEY:", hidden_key)
 
 hf_token = os.environ["HF_TOKEN"]
 hidden_token = hf_token[:6] + "*" * (len(hf_token)-12) + hf_token[-6:]
@@ -550,20 +513,11 @@ print("HF TOKEN:", hidden_token )
 
 
 # choices = ["A", "B", "C", "D", "E", "F"]
-import string
 choices = list(string.ascii_uppercase)
 
 llama_dir = "/gpfswork/rech/imi/utu57ed/llama/llama_files/"
 
-def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
-
-    if args.format in ["code_py", "code_cpp", "conf_toml", "latex"]:
-        if not args.no_profile:
-            raise NotImplementedError(f"{args.format} format is only implemented with no_profile.")
-
-    if args.weather:
-        if not args.no_profile:
-            raise NotImplementedError(f"{args.weather} is only implemented with no_profile.")
+def get_prompt_skeleton(experiment_name, args, simulated_participant):
 
     if "pvq" in experiment_name:
         assert "pvq" in args.data_dir
@@ -577,6 +531,16 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
 
     elif "bag" in experiment_name:
         assert "bag" in args.data_dir
+        questionnaire_description = ""
+        questionnaire_description_empty = True
+
+    elif "svo" in experiment_name:
+        assert "svo" in args.data_dir
+        questionnaire_description = ""
+        questionnaire_description_empty = True
+
+    elif "religion" in experiment_name:
+        assert "religion" in args.data_dir
         questionnaire_description = ""
         questionnaire_description_empty = True
 
@@ -598,7 +562,6 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
     else:
         raise ValueError(f"Experiment name is ill-defined {args.experiment_name}")
 
-    assert args.no_profile
     if args.base_model_template:
         prefix = "The following is a conversation with"
     else:
@@ -620,17 +583,6 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
         set_persona_str = ""
     else:
         raise ValueError("Unknown population type")
-
-    if args.weather:
-        weather_dict = {
-            "rain": "It is a rainy day.",
-            "sun": "It is a beautiful sunny day.",
-            "snow": "It is a snowy winter day",
-            "thunderstorm": "There is a severe thunderstorm.",
-            "sandstorm": "There is a severe sandstorm and a heat wave.",
-            "blizzard": "There is a severe blizzard.",
-        }
-        set_persona_str = set_persona_str.rstrip() + f"\n{weather_dict[args.weather]}"
 
     if args.format == "code_py":
         query_str = """# Choose the answer\nanswer = answers_dict[\"("""
@@ -681,9 +633,7 @@ def get_prompt_skeleton(subject, experiment_name, args, simulated_participant):
     else:
         raise ValueError(f"Undefined format {args.format}.")
 
-
-    # only no_profile with code formats change the questionnaire description
-    assert (not questionnaire_description_empty == questionnaire_description) or (args.no_profile and args.format != "chat")
+    assert (not questionnaire_description_empty == questionnaire_description) or args.format != "chat"
 
     prompt_skeleton = {
         "set_persona_str": set_persona_str,  # remove newline from the end
@@ -729,7 +679,7 @@ def dummy_lprobs_from_generation(response, answers, label_2_text_option_dict):
         return lprobs, match
 
 
-    # look for 'A.'
+    # look for 'A.' -> change to A)
     lprobs, match = find_matches([f"{a}." for a in answers])
     if match:
         return lprobs
@@ -826,7 +776,7 @@ def format_example(df, idx, subject, experiment_name, args, permutations_dict, s
         raise ValueError(f"Undefined textual format {args.format}.")
 
     prompt = get_prompt_skeleton(
-        subject=subject, experiment_name=experiment_name, args=args, simulated_participant=simulated_participant
+        experiment_name=experiment_name, args=args, simulated_participant=simulated_participant
     )
 
     prompt["item_str"] = item_str
@@ -869,7 +819,7 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
     messages_conv = None
     messages_conv_hash = None
 
-    gpt_token_counter = 0
+    gpt_token_counter = {"input": 0, "output": 0}
 
     assert test_df.shape[0] == len(participant_perm_dicts)
 
@@ -904,15 +854,18 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
         assert label in answers + ["undef"]
 
         if args.estimate_gpt_tokens:
-            encoder = tiktoken.encoding_for_model('gpt-3.5-turbo-0301')
-            assert encoder == tiktoken.encoding_for_model('gpt-4-0314')
-            gpt_token_counter += len(encoder.encode(" ".join(prompt.values())))
+            gpt_tokenizer = tiktoken.get_encoding("cl100k_base")
+        else:
+            gpt_tokenizer = None
+
 
         if args.simulate_conversation_theme:
 
             set_persona_str = prompt["set_persona_str"]
             if messages_conv is None:
-                print("SIMULATING CONVERSATION")
+                if args.verbose:
+                    print("SIMULATING CONVERSATION")
+
                 messages_conv, messages_conv_hash = simulate_conversation(
                     args=args,
                     engine=engine,
@@ -921,9 +874,36 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
                     simulated_participant=simulated_participant,
                     llm_generator=llm_generator
                 )
+
+                if args.estimate_gpt_tokens:
+                    # topic setting msg
+                    current_input_tokens = len(gpt_tokenizer.encode(messages_conv[0]['content']))
+
+                    for msg_i in range(1, len(messages_conv)):
+                        current_output_tokens = len(gpt_tokenizer.encode(messages_conv[msg_i]['content']))
+                        gpt_token_counter['input'] += current_input_tokens
+                        gpt_token_counter['output'] += current_output_tokens
+
+                        # add for next message
+                        current_input_tokens += current_output_tokens
+
             else:
-                print("LOADING CACHED CONVERSATION")
+                if args.verbose:
+                    print("LOADING CACHED CONVERSATION")
                 assert hash_chat_conv(messages_conv) == messages_conv_hash
+
+        if args.estimate_gpt_tokens:
+            # gpt params
+            messages = construct_messages(
+                prompt=prompt,
+                system_message=True,
+                messages_conv=messages_conv if args.simulate_conversation_theme else None,
+                add_query_str=True,  # not query_in_reply
+            )
+            n_input_tokens = sum([len(gpt_tokenizer.encode(msg['content'])) for msg in messages])
+
+            gpt_token_counter['input'] += n_input_tokens
+            gpt_token_counter['output'] += 1
 
         if engine == "dummy":
 
@@ -942,8 +922,6 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
 
             formatted_prompt = apply_base_model_template(
                 messages,
-                simulated_participant=simulated_participant,
-                simulated_population_type=args.simulated_population_type,
                 add_generation_prompt=True,
                 assistant_label=simulated_participant_to_name(
                     simulated_participant, args.simulated_population_type).upper(),
@@ -951,12 +929,19 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
                 system_label="CONTEXT"
             )
 
-            print(f"************************\nFORMATTED PROMPT:\n{formatted_prompt}\n******************")
+            if args.verbose:
+                print(f"************************\nFORMATTED PROMPT:\n{formatted_prompt}\n******************")
 
             # generation = messages[-2]['content'][messages[-2]['content'].index(") War") - 1:][:1]
             generation = random.choice([f"{c}" for c in answers])
-            # if re.search("various changes", messages[-2]['content']):
-            #     generation = messages[-2]['content'][messages[-2]['content'].index(") Wait") - 1:][:1]
+
+            # import re
+            # generation = messages[-2]['content'][messages[-2]['content'].index(") a few hours per day") - 1:][:1]
+
+            # if re.search("\) You receive: 85", messages[-2]['content']):
+            #     generation = messages[-2]['content'][messages[-2]['content'].index(") You receive: 85") - 1:][:1]
+            # elif re.search("\) You receive: 100", messages[-2]['content']):
+            #     generation = messages[-2]['content'][messages[-2]['content'].index(") You receive: 100") - 1:][:1]
             # else:
             #     generation = random.choice([f"{c}" for c in answers])
 
@@ -972,6 +957,7 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
 
             tokenizer, model = llm_generator
 
+
             messages = construct_messages(
                 prompt=prompt,
                 system_message=args.system_message,
@@ -982,8 +968,6 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
             if args.base_model_template:
                 formatted_prompt = apply_base_model_template(
                     messages,
-                    simulated_participant=simulated_participant,
-                    simulated_population_type=args.simulated_population_type,
                     add_generation_prompt=True,
                     assistant_label=simulated_participant_to_name(simulated_participant, args.simulated_population_type).upper(),
                     user_label="USER",
@@ -996,7 +980,8 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
             if args.query_in_reply:
                 formatted_prompt += f"{prompt['query_str']}"
 
-            print(f"************************\nFORMATTED PROMPT:\n{formatted_prompt}\n******************")
+            if args.verbose:
+                print(f"************************\nFORMATTED PROMPT:\n{formatted_prompt}\n******************")
 
             inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
 
@@ -1031,8 +1016,6 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
             if args.base_model_template:
                 formatted_prompt = apply_base_model_template(
                     messages,
-                    simulated_participant=simulated_participant,
-                    simulated_population_type=args.simulated_population_type,
                     add_generation_prompt=True,
                     assistant_label=simulated_participant_to_name(simulated_participant, args.simulated_population_type).upper(),
                     user_label="USER",
@@ -1046,7 +1029,8 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
 
                 formatted_prompt += f"{prompt['query_str']}"
 
-            print(f"************************\nFORMATTED PROMPT:\n{formatted_prompt}\n******************")
+            if args.verbose:
+                print(f"************************\nFORMATTED PROMPT:\n{formatted_prompt}\n******************")
 
             inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
 
@@ -1066,85 +1050,54 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
 
             option_scores, generation, lprobs = parse_hf_outputs(output=output, tokenizer=tokenizer, answers=answers)
 
-        elif engine in ["gpt-3.5-turbo-0301", "gpt-4-0314", "gpt-3.5-turbo-0613", "gpt-4-0613", "gpt-3.5-turbo-1106-preview", "gpt-4-1106-preview"]:
+        elif "gpt-3.5-turbo" in engine or "gpt-4" in engine:
             if args.query_in_reply:
                 raise ValueError("Can't use query_in_reply with gpt models.")
 
             if args.base_model_template:
                 raise ValueError("base_model_template not supported for gpt models")
 
-            while True:
-                try:
+            tokenizer, model = llm_generator
 
-                    messages = construct_messages(
-                        prompt=prompt,
-                        system_message=args.system_message,
-                        messages_conv=messages_conv if args.simulate_conversation_theme else None,
-                        add_query_str=True,
-                    )
+            messages = construct_messages(
+                prompt=prompt,
+                system_message=args.system_message,
+                messages_conv=messages_conv if args.simulate_conversation_theme else None,
+                add_query_str=True,
+            )
 
-                    print_chat_messages(messages)
-                    encoder = tiktoken.encoding_for_model(engine)
+            if args.verbose:
+                print_chat_messages(messages)
 
-                    # get the encoding for each letter in choices
-                    logit_bias = {encoder.encode(c)[0]: 100 for c in answers}
+            encoder = tiktoken.encoding_for_model(engine)
 
-                    c = openai.ChatCompletion.create(
-                        model=engine,
-                        messages=messages,
-                        max_tokens=1,
-                        n=1,
-                        temperature=0,
-                        logit_bias=logit_bias,
-                        request_timeout=30,
-                    )
-                    generation = c['choices'][0]['message']['content']
+            # get the encoding for each letter in choices
+            logit_bias = {encoder.encode(c)[0]: 100 for c in answers}
 
-                    break
+            if args.azure_openai:
+                # time.sleep(0.05)
+                c = completions_with_backoff(
+                    client=model,
+                    model=openai_2_azure_tag[engine],
+                    messages=messages,
+                    max_tokens=1,
+                    n=1,
+                    temperature=0,
+                    logit_bias=logit_bias,
+                )
+            else:
+                c = model.chat.completions.create(
+                    model=engine,
+                    messages=messages,
+                    max_tokens=1,
+                    n=1,
+                    temperature=0,
+                    logit_bias=logit_bias,
+                )
 
-                except Exception as e:
-                    print(e)
-                    print("Pausing")
-                    time.sleep(10)
-                    continue
+            generation = c.choices[0].message.content
 
             lprobs = dummy_lprobs_from_generation(generation, answers, label_2_text_option_dict)
-
-        elif engine in ["gpt-3.5-turbo-instruct-0914"]:
-
-            if args.simulate_conversation_theme:
-                raise NotImplementedError("noisy conversation not implemented for user message")
-
-            if args.system_message:
-                raise NotImplementedError("Text generation models don't have system message")
-
-            while True:
-                try:
-                    c = openai.Completion.create(
-                        engine=engine,
-                        prompt=prompt,
-                        max_tokens=1,
-                        logprobs=1,
-                        temperature=0,
-                        echo=True
-                    )
-                    break
-                except Exception as e:
-                    print(e)
-                    print("Pausing")
-                    time.sleep(1)
-                    continue
-
-            assert c["choices"][0]["logprobs"]["top_logprobs"][0] is None
-
-            output_dict = dict([tuple(*i.items()) for i in c["choices"][0]["logprobs"]["top_logprobs"][1:]])
-            option_scores = {ans: output_dict.get(ans, -100) for ans in answers}
-
-            # take the most probable answer as the generation
-            generation = max(option_scores, key=option_scores.get)
-
-            # extract logprobs
-            lprobs = [float(option_scores[a]) for a in answers]
 
         else:
             raise ValueError(f"Not recognized model {engine}.")
@@ -1154,8 +1107,9 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
         cor = pred == label
         score = map_choice_to_number(pred, permutations_dict)
 
-        print(colored(f"Pred:{pred} (Generation:{generation}; Score: {score})", "green"))
-        print("------------------")
+        if args.verbose:
+            print(colored(f"Pred:{pred} (Generation:{generation}; Score: {score})", "green"))
+            print("------------------")
 
         cors.append(cor)
         all_lprobs.append(lprobs)
@@ -1168,23 +1122,10 @@ def eval(args, subject, engine, dev_df, test_df, participant_perm_dicts, llm_gen
     cors = np.array(cors)
     all_scores = np.array(all_scores)
 
-    print("Average accuracy {:.3f} - {}".format(acc, subject))
-
     if args.estimate_gpt_tokens:
-        print("total GPT tokens used: {} for subject {}".format(gpt_token_counter, subject))
-        print(f"\tgpt-4 ~ {0.04 *gpt_token_counter/1000:.4f} dollars".format(args))
-        print(f"\tgpt-3.5 ~ {0.002 *gpt_token_counter/1000:.4f} dollars".format(args))
-        print(f"\tdavinci ~ {0.02 *gpt_token_counter/1000:.4f} dollars".format(args))
-        print(f"\tcurie ~ {0.002 *gpt_token_counter/1000:.4f} dollars".format(args))
-        print(f"\tbabagge ~ {0.0005 *gpt_token_counter/1000:.4f} dollars".format(args))
-        print(f"\tada ~ {0.0004 *gpt_token_counter/1000:.4f} dollars".format(args))
+        estimate_and_print_gpt_prices(gpt_token_counter, engine)
 
     return cors, acc, all_probs, all_lprobs, all_answers, all_scores, all_generations, gpt_token_counter
-
-def remove_prefix(s, pref):
-    if s.startswith(pref):
-        return s[len(pref):]
-    return s
 
 
 def main(args):
@@ -1198,15 +1139,20 @@ def main(args):
         args.experiment_name,
         engine,
         os.path.basename(args.data_dir),
-        f"{args.pvq_version}_" if args.pvq_version else "",
         f"permutations_{args.permutations}" if args.permutations > 1 else "",
         f"permute_options_{args.permute_options_seed}" if args.permute_options else "",
-        f"no_profile_{args.no_profile}" if args.no_profile else "",
         f"format_{args.format}",
-        f"weather_{args.weather}" if args.weather else "",
         f"simulate_conv_{args.simulate_conversation_theme}" if args.simulate_conversation_theme else "",
         timestamp
     ]))
+
+    if not args.overwrite:
+        # check for previous versions and break if found
+        import glob
+        prev_versions = glob.glob(dump_results_dir.removesuffix(timestamp)+"*/results.json")
+        if len(prev_versions) > 0:
+            raise RuntimeError(f"Previous version of this run were found: {prev_versions}")
+
     os.makedirs(dump_results_dir, exist_ok=True)
     print("Savedir: ", dump_results_dir)
 
@@ -1217,17 +1163,13 @@ def main(args):
     if "data_pvq" in args.data_dir:
         assert "pvq" in args.experiment_name
 
-        subjects_to_evaluate = [args.pvq_version]
-        if args.pvq_version not in ["pvq_female", "pvq_male", "pvq_auto"]:
-            raise ValueError(f"Unknown pvq version {args.pvq_version}.")
-
         # assert set(subjects_to_evaluate).issubset(subjects)
-        subjects = subjects_to_evaluate
+        subjects = ["pvq_auto"]
 
     print("Args:", args)
     print("Subjects:", subjects)
 
-    gpt_tokens_total = 0
+    gpt_tokens_total = {"input": 0, "output": 0}
 
     if engine in ["zephyr-7b-beta"]:
         print("Loading zephyr-7b-beta")
@@ -1245,44 +1187,62 @@ def main(args):
         llm_generator = (tokenizer, model)
 
     elif engine in ["phi-1", "phi-1.5", "phi-2"]:
-        # Load model directly
-        # torch.set_default_device("cuda")
-        # model = AutoModelForCausalLM.from_pretrained(f"microsoft/{engine}", torch_dtype="auto", trust_remote_code=True, cache_dir=hf_cache_dir)
         tokenizer = AutoTokenizer.from_pretrained(f"microsoft/{engine}", trust_remote_code=True, cache_dir=hf_cache_dir)
         model = AutoModelForCausalLM.from_pretrained(f"microsoft/{engine}", trust_remote_code=True, cache_dir=hf_cache_dir, device_map="cuda")
         llm_generator = (tokenizer, model)
 
-    elif engine in [
-        "falcon-7b", "falcon-7b-instruct",
-        "falcon-40b", "falcon-40b-instruct",
-        "falcon-180b", "falcon-180b-chat",
-    ]:
+    elif "Mistral-7B" in engine and "_ft_" in engine:
 
-        # loads on SWAP for some reason ->problem with device map?
-        tokenizer = AutoTokenizer.from_pretrained(f"tiiuae/{engine}", cache_dir=hf_cache_dir, device_map="cuda")
+        ft_model_path = f"./results_ft/{engine}/final"
 
-        pipe = pipeline(
-            "text-generation",
-            model=f"tiiuae/{engine}",
-            tokenizer=tokenizer,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
-            device_map="cuda",
-            cache_dir=hf_cache_dir,
-        )
-        # path='/gpfsscratch/rech/imi/utu57ed/.cache/huggingface/models--tiiuae--falcon-7b'
-        path='/gpfsscratch/rech/imi/utu57ed/.cache/huggingface/models--tiiuae--falcon-7b/snapshots/898df1396f35e447d5fe44e0a3ccaaaa69f30d36'
-        model = AutoModelForCausalLM.from_pretrained(
-            path, device_map="cuda", torch_dtype=torch.float16, trust_remote_code=True
-        )
+        if "no_peft" in engine:
+            model = AutoModelForCausalLM.from_pretrained(
+                ft_model_path,
+                device_map="auto",
+                cache_dir=hf_cache_dir
+            )
+            tokenizer = AutoTokenizer.from_pretrained(ft_model_path, cache_dir=hf_cache_dir)
 
-        model = AutoModelForCausalLM.from_pretrained(
-            f"tiiuae/{engine}",
-            # torch_dtype=torch.bfloat16,
-            cache_dir=hf_cache_dir,
-            trust_remote_code=True,
-            # device_map="cuda",
-        )
+        else:
+
+            lora_config = LoraConfig.from_pretrained(ft_model_path)
+            base_model = lora_config.base_model_name_or_path
+
+            if "LOAD_INSTRUCT" in ft_model_path:
+                colored("LOADING INSTRUCT MODEL WHICH is different from the trained based model... Only for testing!!", "red")
+                base_model = "mistralai/Mistral-7B-Instruct-v0.2"
+
+            print(f"Loading {engine}")
+
+            bnb_config_ = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_use_double_quant=False,
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                base_model,
+                quantization_config=bnb_config_,
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+                trust_remote_code=True,
+                cache_dir=hf_cache_dir
+            )
+            print("Loaded base model: ", base_model)
+            model = prepare_model_for_kbit_training(model)
+            model = PeftModel.from_pretrained(model, ft_model_path)
+            print("Loaded peft from ", ft_model_path)
+
+
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(ft_model_path, trust_remote_code=True, cache_dir=hf_cache_dir)
+                print("Loaded tokeniezer from ", ft_model_path)
+            except:
+                tokenizer = AutoTokenizer.from_pretrained(
+                    lora_config.base_model_name_or_path, trust_remote_code=True, cache_dir=hf_cache_dir)
+                print("Loaded tokenizer from ", lora_config.base_model_name_or_path)
+
+        llm_generator = (tokenizer, model)
 
     elif engine in [
         "Mistral-7B-v0.1",
@@ -1301,10 +1261,7 @@ def main(args):
     ]:
         print(f"Loading {engine}")
         tokenizer = AutoTokenizer.from_pretrained(f"mistralai/{engine}", cache_dir=hf_cache_dir, device_map="auto")
-        # model = AutoModelForCausalLM.from_pretrained(
-        #     f"mistralai/{engine}", device_map="auto", cache_dir=hf_cache_dir, torch_dtype=torch.float16, attn_implementation="flash_attention_2")
-        model = AutoModelForCausalLM.from_pretrained(
-            f"mistralai/{engine}", device_map="auto", cache_dir=hf_cache_dir, torch_dtype=torch.float16)
+        model = AutoModelForCausalLM.from_pretrained(f"mistralai/{engine}", device_map="auto", cache_dir=hf_cache_dir, torch_dtype=torch.float16)
 
         llm_generator = (tokenizer, model)
 
@@ -1345,7 +1302,40 @@ def main(args):
 
         llm_generator = (tokenizer, model)
 
-    elif "gpt" in engine or engine in ["dummy", "interactive"]:
+    elif "gpt" in engine:
+
+        if args.azure_openai:
+            print(colored("Using Azure OPENAI API", "red"))
+            from openai import AzureOpenAI
+
+            if engine == "gpt-3.5-turbo-0125":
+                model = AzureOpenAI(
+                    azure_endpoint="https://petunia-grgur.openai.azure.com/",
+                    api_key=os.getenv("AZURE_OPENAI_KEY_gpt_35_turbo_0125"),
+                    api_version="2024-02-15-preview"
+                )
+
+            elif engine == "gpt-3.5-turbo-1106":
+                model = AzureOpenAI(
+                    azure_endpoint="https://petunia-grgur-gpt-35-turbo-1106.openai.azure.com/",
+                    api_key=os.getenv("AZURE_OPENAI_KEY_gpt_35_turbo_1106"),
+                    api_version="2024-02-15-preview"
+                )
+            else:
+                raise NotImplementedError("Azure endpoint not found.")
+
+        else:
+            print(colored("Using OPENAI API", "red"))
+            from openai import OpenAI
+            openai_api_key = os.environ["OPENAI_API_KEY"]
+            hidden_key = openai_api_key[:4] + "*" * 10 + openai_api_key[4:]
+            print(f"OPENAI KEY: {hidden_key}")
+            model = OpenAI(api_key=openai_api_key)
+
+        tokenizer = tiktoken.get_encoding("cl100k_base")
+        llm_generator = (tokenizer, model)
+
+    elif engine or engine in ["dummy", "interactive"]:
         llm_generator = None
 
     else:
@@ -1363,6 +1353,8 @@ def main(args):
         max_n_options = 6
     elif "bag" in args.data_dir:
         max_n_options = 6
+    elif "religion" in args.data_dir:
+        max_n_options = 5
     else:
         raise ValueError(f"Undefined number of options for data in {args.data_dir}.")
 
@@ -1434,6 +1426,7 @@ def main(args):
                 os.path.join(args.data_dir, args.eval_set, subject + f"_{args.eval_set}.csv"),
                 header=None,
                 keep_default_na=False,
+                dtype=str
             )
             n_options = [max_n_options]*len(test_df)
 
@@ -1455,7 +1448,7 @@ def main(args):
 
         # evaluate over population
         for sim_part_i, (simulated_participant, simulated_participant_gender, participant_perm_dicts) in enumerate(zip(simulated_population, simulated_population_genders, permutations_dicts)):
-            print(f"Simulated participant {sim_part_i}")
+            print(f"Simulated participant {sim_part_i}/{len(simulated_population)}")
 
             if subject == "pvq_auto":
                 test_df = test_df_dict[simulated_participant_gender]
@@ -1471,7 +1464,8 @@ def main(args):
                 simulated_participant=simulated_participant,
             )
             all_cors.append(cors)
-            gpt_tokens_total += gpt_tokens
+            gpt_tokens_total['input'] += gpt_tokens['input']
+            gpt_tokens_total['output'] += gpt_tokens['output']
 
             subj_acc[sim_part_i][subject] = acc
             subj_lprobs[sim_part_i][subject] = eval_lprobs
@@ -1572,6 +1566,14 @@ def main(args):
                     f"Return {g}": np.mean(g_d) for g, g_d in zip(groups, group_bag)
                 }
 
+            elif "religion" in args.data_dir:
+                assert "religion" in args.experiment_name
+
+                metrics[sim_part_i][subject] = {
+                    f"religion time": np.mean(preds_values)
+                }
+
+
             else:
                 raise NotImplementedError("Evaluation not implemented")
 
@@ -1612,10 +1614,6 @@ def main(args):
                 for metric, score in m.items():
                     print(f"{metric} : {score}")
 
-                plot_dict(m, savefile=os.path.join(dump_results_dir, f"plot_{subj}.png"))
-
-        # accuracy
-        plot_dict(mean_subj_acc, savefile=os.path.join(dump_results_dir, f"plot_mean_acc.png"))
 
         if not os.path.exists(dump_results_dir):
             os.mkdir(dump_results_dir)
@@ -1655,13 +1653,7 @@ def main(args):
             print("pop metrics:", pop_metrics['all']['hist'])
 
     if args.estimate_gpt_tokens:
-        print("total GPT tokens used: {}".format(gpt_tokens_total))
-        print(f"\tgpt-4 ~ {0.04 *gpt_tokens_total/1000:.4f} dollars".format(args))
-        print(f"\tgpt-3.5 ~ {0.002 *gpt_tokens_total/1000:.4f} dollars".format(args))
-        print(f"\tdavinci ~ {0.02 *gpt_tokens_total/1000:.4f} dollars".format(args))
-        print(f"\tcurie ~ {0.002 *gpt_tokens_total/1000:.4f} dollars".format(args))
-        print(f"\tbabagge ~ {0.0005 *gpt_tokens_total/1000:.4f} dollars".format(args))
-        print(f"\tada ~ {0.0004 *gpt_tokens_total/1000:.4f} dollars".format(args))
+        estimate_and_print_gpt_prices(gpt_tokens_total, engine)
 
 
 if __name__ == "__main__":
@@ -1670,12 +1662,10 @@ if __name__ == "__main__":
     parser.add_argument("--data_dir", "-d", type=str, required=True)
     parser.add_argument("--save_dir", "-s", type=str, default="results/results_test")
     parser.add_argument("--experiment_name", "-n", type=str, default="")
-    parser.add_argument("--pvq-version", type=str, default="pvq_auto", choices=["pvq_female", "pvq_male", "pvq_auto"])
+    parser.add_argument("--pvq-version", type=str, default="pvq_auto", choices=["pvq_auto"])
     parser.add_argument("--engine", "-e", type=str, default="dummy")
     parser.add_argument("--format", type=str, default="chat", choices=["chat", "code_py", "code_cpp", "conf_toml", "latex"])
-    parser.add_argument("--weather", type=str, default=None)
     parser.add_argument('--profile', type=str, help='Profile definition in format "k:v;k:v;k:v", ex. "age:35;interests:reading books"')
-    parser.add_argument("--max-tokens", "-mt", type=int, default=10, help="How many tokens to generate in genreative-qa")
     parser.add_argument("--query-in-reply", action="store_true", help="Force the query string as the beginning of the model's reply.")
     parser.add_argument("--base-model-template", action="store_true")
     parser.add_argument("--query-prompt", "-qp", type=str, help="Use Answer(as ONE letter): where applicable.")
@@ -1686,16 +1676,20 @@ if __name__ == "__main__":
     parser.add_argument("--cold-run", "-cr", action="store_true")
     parser.add_argument("--estimate-gpt-tokens", "-t", action="store_true")
     parser.add_argument("--eval-set", type=str, default="test", choices=["test", "val"])
-    parser.add_argument("--no-profile", action="store_true")
     parser.add_argument("--simulate-conversation-theme", type=str, default=None)
     parser.add_argument("--simulated-conversation-n-messages", type=int, default=5)
     parser.add_argument("--permute-options", "-po", action="store_true")
+    parser.add_argument("--azure-openai", action="store_true")
     parser.add_argument("--simulated-human-knows-persona", action="store_true")
     parser.add_argument("--simulated-population-type", "-pop", type=str, default="tolkien_characters", choices=["permutations", "tolkien_characters", "famous_people", "llm_personas", "user_personas", "anes"])
     parser.add_argument("--permutations", "-p", type=int, default=1)  # permutations as a population type
     parser.add_argument("--permute-options-seed", type=str)
     parser.add_argument("--separator", action="store_true")
+    parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
+
+    assert args.azure_openai
+    assert args.pvq_version == "pvq_auto"
 
     if not args.data_dir.startswith("data"):
         raise ValueError(f"data_dir should be inside data, and it's {args.data_dir}")
@@ -1726,7 +1720,7 @@ if __name__ == "__main__":
         if "Mistral" in args.engine or "Mixtral" in args.engine:
             assert args.query_in_reply
 
-            if "Instruct" in args.engine:
+            if "Instruct" in args.engine or "ft_roleplay" in args.engine:
                 assert not args.system_message
                 assert not args.base_model_template
             else:
@@ -1745,7 +1739,6 @@ if __name__ == "__main__":
         if args.simulate_conversation_theme and not args.simulated_human_knows_persona:
             raise ValueError("Use simulated_human_knows_persona.")
 
-
     if args.simulate_conversation_theme in ["None", "none"]:
         args.simulate_conversation_theme = None
 
@@ -1762,24 +1755,16 @@ if __name__ == "__main__":
         # just used to show the profile to be used
         exit()
 
-    if not args.separator and not args.no_profile:
-        raise ValueError("You are not using a separator?")
-
     if ("gpt-3.5" in args.engine and args.permutations > 50) or ("gpt-4" in args.engine and args.permutations > 5):
         raise ValueError(f"Are you sure you want to use {args.permutations} with {args.engine}??")
 
     # assert for plosone gpt or query_in_reply for other models
     # because query_in_reply can't be implemented for GPTs
-    assert args.query_in_reply or "gpt" in args.engine
+    assert args.query_in_reply or "gpt" in args.engine or "dummy" in args.engine
 
     if "gpt" in args.engine:
         if args.query_in_reply:
             raise ValueError("Can't use query in reply with gpt models")
-
-    assert args.no_profile
-
-    if "pvq" in args.data_dir:
-        assert args.pvq_version == "pvq_auto"
 
     start_time = time.time()
     main(args)

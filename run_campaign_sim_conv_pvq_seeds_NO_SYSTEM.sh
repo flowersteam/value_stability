@@ -9,28 +9,56 @@
 ##SBATCH --qos=qos_gpu-dev
 
 ##########################################################
-# Set the questionnaire and population (uncomment he corresponding 4 lines)
+# Set the questionnaire and population (using the second command argument)
 ##########################################################
 
-## PVQ - tolkien characters
-test_tag="pvq"
-experiment_name="pvq_test"
-data_dir="data_pvq"
-population_type="tolkien_characters"
+experiment_setting=$2
 
-### PVQ - real world persona
-#test_tag="pvq"
-#experiment_name="pvq_test"
-#data_dir="data_pvq"
-#population_type="famous_people"
+# Define the configuration based on the experiment_setting
+case "$experiment_setting" in
+  pvq_tolk)
+    test_tag="pvq"
+    experiment_name="pvq_test"
+    data_dir="data_pvq"
+    population_type="tolkien_characters"
+    ;;
+  pvq_fam)
+    test_tag="pvq"
+    experiment_name="pvq_test"
+    data_dir="data_pvq"
+    population_type="famous_people"
+    ;;
+  don)
+    test_tag="tolkien_donation"
+    experiment_name="tolkien_donation_test"
+    data_dir="data_tolkien_donation"
+    population_type="tolkien_characters"
+    ;;
+  bag)
+    test_tag="tolkien_bag"
+    experiment_name="tolkien_bag_test"
+    data_dir="data_tolkien_bag"
+    population_type="tolkien_characters"
+    ;;
+  religion)
+    test_tag="religion"
+    experiment_name="religion_test"
+    data_dir="data_religion"
+    population_type="famous_people"
+    ;;
+  *)
+    echo "Invalid experiment_setting. Please use one of the following: pvq_tolk, pvq_fam, don, bag, rel."
+    exit 1
+    ;;
+esac
 
-## Donation - tolkien characters
-#test_tag="tolkien_donation"
-#experiment_name="tolkien_donation_test"
-#data_dir="data_tolkien_donation"
-#population_type="tolkien_characters"
-
+# Print the selected configuration
+echo "test_tag=$test_tag"
+echo "experiment_name=$experiment_name"
+echo "data_dir=$data_dir"
+echo "population_type=$population_type"
 #####################################################
+
 
 # extract theme and n_msgs
 seed_list=(1 3 5 7 9)
@@ -116,7 +144,7 @@ if [[ $engine == *"Mistral"* ]] || [[ $engine == *"Mixtral"* ]]; then
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
   else
@@ -138,7 +166,7 @@ if [[ $engine == *"Mistral"* ]] || [[ $engine == *"Mixtral"* ]]; then
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
   fi
 
@@ -166,7 +194,7 @@ elif [[ $engine == *"zephyr"* ]] || [[ $engine == *"llama_2"* ]] || [[ $engine =
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
   else
@@ -187,7 +215,7 @@ elif [[ $engine == *"zephyr"* ]] || [[ $engine == *"llama_2"* ]] || [[ $engine =
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
   fi
@@ -211,7 +239,7 @@ elif [[ $engine == *"gpt"* ]] ; then
     --data_dir data/$data_dir \
     --experiment_name $experiment_name \
     --pvq-version "pvq_auto" \
-    --no-profile \
+    --azure-openai \
     --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
 

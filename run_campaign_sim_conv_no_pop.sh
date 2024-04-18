@@ -3,8 +3,8 @@
 #SBATCH -C a100
 #SBATCH --time=01:59:59
 #SBATCH --gres=gpu:4
-##SBATCH --array=0-24 # themes x n_msg -> 5x5 (no default profile, only contexts)
-#SBATCH --array=29-29 # just no conversation, default profile
+#SBATCH --array=0-24 # themes x n_msg -> 5x5 (no default profile, only contexts)
+##SBATCH --array=0-29 (include no conv)
 #SBATCH -o slurm_logs/sb_log_%A_%a.out
 #SBATCH -e slurm_logs/sb_log_%A_%a.err
 ##SBATCH --qos=qos_gpu-dev
@@ -29,9 +29,6 @@ themes=(
   "None"
 )
 themes_len=${#themes[@]}
-
-SLURM_ARRAY_TASK_ID=25
-echo "ID:"$SLURM_ARRAY_TASK_ID
 
 
 theme_i=$(( SLURM_ARRAY_TASK_ID / $n_msgs_len ))
@@ -73,16 +70,14 @@ all_engines=(
   "Qwen-7B"
   "Qwen-72B-Chat"
   "dummy"
-#  "gpt-3.5-turbo-0301"
-#  "gpt-3.5-turbo-0613"
+  "gpt-3.5-turbo-0125"
 #  "gpt-3.5-turbo-1106"
-#  "gpt-3.5-turbo-instruct-0914"
+#  "gpt-3.5-turbo-0613"
+#  "gpt-3.5-turbo-0301"
 )
 
 # Select engine based on provided index
 engine="${all_engines[$1]}"
-
-
 
 
 echo "Evaluation:$engine:$theme:$permute_options_seed:$n_msgs"
@@ -99,13 +94,11 @@ source $HOME/.bashrc
 conda activate llm_stability
 
 
-
-
 if [[ $engine == *"Mistral"* ]] || [[ $engine == *"Mixtral"* ]]; then
 
   echo "Mistral or Mixtral: $engine"
 
-  if [[ $engine == *"Instruct"* ]] ; then
+  if [[ $engine == *"Instruct"* ]] || [[ $engine == *"ft_roleplay"* ]] ; then
     # INSTRUCT MODELS
 
     # mistral, mixtral -> no sys; query
@@ -123,7 +116,7 @@ if [[ $engine == *"Mistral"* ]] || [[ $engine == *"Mixtral"* ]]; then
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
   else
@@ -146,7 +139,7 @@ if [[ $engine == *"Mistral"* ]] || [[ $engine == *"Mixtral"* ]]; then
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
   fi
 
@@ -169,7 +162,7 @@ elif [[ $engine == *"phi"* ]] || [[ $engine == "Qwen-"*"B" ]]; then
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
 elif [[ $engine == *"zephyr"* ]] || [[ $engine == *"llama_2"* ]] || [[ $engine == "dummy" ]]; then
@@ -196,7 +189,7 @@ elif [[ $engine == *"zephyr"* ]] || [[ $engine == *"llama_2"* ]] || [[ $engine =
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
   else
@@ -218,7 +211,7 @@ elif [[ $engine == *"zephyr"* ]] || [[ $engine == *"llama_2"* ]] || [[ $engine =
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
   fi
@@ -243,7 +236,7 @@ elif [[ $engine == *"gpt"* ]] ; then
     --data_dir data/$data_dir \
     --experiment_name $experiment_name \
     --pvq-version "pvq_auto" \
-    --no-profile \
+    --azure-openai \
     --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
 

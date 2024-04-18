@@ -55,8 +55,6 @@ all_models.extend(models)
 data_dirs_prefixes = [
     ("results_sim_conv_tolkien_simulated_human_knows_persona", "results_pvq_sim_conv_tolkien_characters"),
     ("results_sim_conv_v2_simulated_human_knows_persona", "results_pvq_sim_conv_famous_people"),
-    ("results_tolkien_ultimatum_sim_conv_v2_perm", "results_ult_sim_conv_tolkien_characters"),
-    ("results_regular_ultimatum_sim_conv_v2", "results_ult_sim_conv_famous_people")
 ]
 all_data_dirs.extend(list(zip(*data_dirs_prefixes))[0])
 

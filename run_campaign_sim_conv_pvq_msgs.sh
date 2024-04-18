@@ -128,7 +128,7 @@ if [[ $engine == *"Mistral"* ]] || [[ $engine == *"Mixtral"* ]]; then
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --assert-params \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
@@ -152,7 +152,7 @@ if [[ $engine == *"Mistral"* ]] || [[ $engine == *"Mixtral"* ]]; then
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --assert-params \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
   fi
@@ -182,7 +182,7 @@ elif [[ $engine == *"zephyr"* ]] || [[ $engine == *"llama_2"* ]] || [[ $engine =
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --assert-params \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
@@ -205,7 +205,7 @@ elif [[ $engine == *"zephyr"* ]] || [[ $engine == *"llama_2"* ]] || [[ $engine =
       --data_dir data/$data_dir \
       --experiment_name $experiment_name \
       --pvq-version "pvq_auto" \
-      --no-profile \
+      --azure-openai \
       --assert-params \
       --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
@@ -231,7 +231,7 @@ elif [[ $engine == *"gpt"* ]] ; then
     --data_dir data/$data_dir \
     --experiment_name $experiment_name \
     --pvq-version "pvq_auto" \
-    --no-profile \
+    --azure-openai \
     --assert-params \
     --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
