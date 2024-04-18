@@ -534,30 +534,10 @@ def get_prompt_skeleton(experiment_name, args, simulated_participant):
         questionnaire_description = ""
         questionnaire_description_empty = True
 
-    elif "svo" in experiment_name:
-        assert "svo" in args.data_dir
-        questionnaire_description = ""
-        questionnaire_description_empty = True
-
     elif "religion" in experiment_name:
         assert "religion" in args.data_dir
         questionnaire_description = ""
         questionnaire_description_empty = True
-
-    elif "hofstede" in experiment_name:
-        assert "hofstede" in args.data_dir
-        # VSM questionnaire doesn't have a description
-        questionnaire_description = ""
-        questionnaire_description_empty = True
-
-    elif "big5" in experiment_name:
-        questionnaire_description = "Mark how much you agree with each statement."
-        questionnaire_description_empty = False
-
-    elif "mmlu" in experiment_name:
-        assert "mmlu" in args.data_dir
-        questionnaire_description = "The following are multiple choice questions (with answers)."
-        questionnaire_description_empty = False
 
     else:
         raise ValueError(f"Experiment name is ill-defined {args.experiment_name}")
@@ -1343,12 +1323,8 @@ def main(args):
 
     print(f"Loaded model: {args.engine}.")
 
-    if "hofstede" in args.data_dir:
-        max_n_options = 5
-    elif "pvq" in args.data_dir:
+    if "pvq" in args.data_dir:
         max_n_options = 6
-    elif "big5" in args.data_dir:
-        max_n_options = 5
     elif "donation" in args.data_dir:
         max_n_options = 6
     elif "bag" in args.data_dir:
@@ -1473,61 +1449,7 @@ def main(args):
             answers[sim_part_i][subject] = list(zip(preds, map(int, preds_values)))
             generations[sim_part_i][subject] = gens
 
-            if "hofstede" in args.data_dir:
-                assert "hofstede" in args.experiment_name
-
-                # from the manual (question indices start from 1)
-                # power_distance = 35(m07 – m02) + 25(m20 – m23) + C(pd)
-                # individualism = 35(m04 – m01) + 35(m09 – m06) + C(ic)
-                # masculinity = 35(m05 – m03) + 35(m08 – m10) + C(mf)
-                # uncertainty_avoidance = 40(m18 - m15) + 25(m21 – m24) + C(ua)
-                # long_term_orientation = 40(m13 – m14) + 25(m19 – m22) + C(ls)
-                # indulgence = 35(m12 – m11) + 40(m17 – m16) + C(ir)
-
-                # indices start from 0
-                metrics[sim_part_i][subject] = {
-                    "Power Distance": 35*(preds_values[6] - preds_values[1]) + 25*(preds_values[19] - preds_values[22]),
-                    "Individualism": 35*(preds_values[3] - preds_values[0]) + 35*(preds_values[8] - preds_values[5]),
-                    "Masculinity": 35*(preds_values[4] - preds_values[2]) + 35*(preds_values[7] - preds_values[9]),
-                    "Uncertainty Avoidance": 40*(preds_values[17] - preds_values[14]) + 25*(preds_values[20] - preds_values[23]),
-                    "Long-Term Orientation": 40*(preds_values[12] - preds_values[13]) + 25*(preds_values[18] - preds_values[21]),
-                    "Indulgence": 35*(preds_values[11] - preds_values[10]) + 40*(preds_values[16] - preds_values[15])
-                }
-
-                metrics[sim_part_i][subject] = {k: float(v) for k, v in metrics[sim_part_i][subject].items()}
-
-            elif "big5" in args.data_dir:
-
-                # items are given in the following order
-                # positive items for Neuroticism, neg items for Neuroticism,
-                # positive items for Extravesion, neg items for Extraversion,
-                # ...
-                # positive items for Conscientiousness, neg items for Conscientiousness
-
-                if "data_big5_50" == args.data_dir:
-                    items_per_chunk = 5
-                elif "data_big5_100" == args.data_dir:
-                    items_per_chunk = 10
-                else:
-                    raise ValueError(f"data_dir {args.data_dir} not supported.")
-
-                # separate answers into chunks
-                chunks = [preds_values[st:st + items_per_chunk] for st in range(0, len(preds_values), items_per_chunk)]
-
-                # pos item score - A = 1, F = 5
-                # neg item score - A = 5, F = 1
-                # revert negative items - neg_i = 6 - neg_i
-                # i.e. total: sum(pos_its) + 6*items_per_chunk - sum(nef_its)
-                metrics[sim_part_i][subject] = {
-                    "Neuroticism": chunks[0].sum() + 6*items_per_chunk - chunks[1].sum(),
-                    "Extraversion": chunks[2].sum() + 6*items_per_chunk - chunks[3].sum(),
-                    "Openness to Experience": chunks[4].sum() + 6*items_per_chunk - chunks[5].sum(),
-                    "Agreeableness": chunks[6].sum() + 6*items_per_chunk - chunks[7].sum(),
-                    "Conscientiousness": chunks[8].sum() + 6*items_per_chunk - chunks[9].sum()
-                }
-                metrics[sim_part_i][subject] = {k: float(v) for k, v in metrics[sim_part_i][subject].items()}
-
-            elif "pvq" in args.data_dir:
+            if "pvq" in args.data_dir:
                 assert "pvq" in args.experiment_name
 
                 profile_values_idx_json = os.path.join(os.path.join(args.data_dir, "raw"), "values.json")
@@ -1572,7 +1494,6 @@ def main(args):
                 metrics[sim_part_i][subject] = {
                     f"religion time": np.mean(preds_values)
                 }
-
 
             else:
                 raise NotImplementedError("Evaluation not implemented")
@@ -1672,7 +1593,6 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--system-message", "-sm", action="store_true")
     parser.add_argument("--assert-params", action="store_true")
-    parser.add_argument("--direct-perspective", action="store_true")
     parser.add_argument("--cold-run", "-cr", action="store_true")
     parser.add_argument("--estimate-gpt-tokens", "-t", action="store_true")
     parser.add_argument("--eval-set", type=str, default="test", choices=["test", "val"])
@@ -1750,7 +1670,6 @@ if __name__ == "__main__":
         raise ValueError("Permute options string should be defined for stability")
 
     if args.cold_run:
-        print("2nd person:", args.direct_perspective)
         print("System message:", args.system_message)
         # just used to show the profile to be used
         exit()
