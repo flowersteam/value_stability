@@ -564,47 +564,7 @@ def get_prompt_skeleton(experiment_name, args, simulated_participant):
     else:
         raise ValueError("Unknown population type")
 
-    if args.format == "code_py":
-        query_str = """# Choose the answer\nanswer = answers_dict[\"("""
-
-        questionnaire_description = f"""query = \"\"\"\n{questionnaire_description}"""
-
-    elif args.format == "code_cpp":
-        query_str = "\t// Choose the answer\n\tstd::string answer = answers_dict[\"("
-
-        questionnaire_description = "#include <iostream>\n" + \
-        "#include <string>\n" + \
-        "#include <map>\n" + \
-        "int main() {\n" + \
-        "\tstd::string query = R\"(\n" + \
-        questionnaire_description
-
-    elif args.format == "conf_toml":
-        query_str = "answer = ("
-
-        if questionnaire_description_empty:
-            questionnaire_description = \
-                "[questionnaire]\n"
-        else:
-            questionnaire_description = \
-                "[questionnaire]\n" + \
-                f"# {questionnaire_description}"
-
-    elif args.format == "latex":
-        if args.query_prompt:
-            query_str = args.query_prompt
-        else:
-            query_str = "Answer: ("
-
-        questionnaire_description = \
-            "\\documentclass{article}\n" + \
-            "\\usepackage{enumitem}\n" + \
-            "\n" + \
-            "\\begin{document}\n" + \
-            "\n" + \
-            questionnaire_description
-
-    elif args.format == "chat":
+    if args.format == "chat":
         if args.query_prompt:
             query_str = args.query_prompt
         else:
@@ -613,7 +573,7 @@ def get_prompt_skeleton(experiment_name, args, simulated_participant):
     else:
         raise ValueError(f"Undefined format {args.format}.")
 
-    assert (not questionnaire_description_empty == questionnaire_description) or args.format != "chat"
+    assert (not questionnaire_description_empty == questionnaire_description)
 
     prompt_skeleton = {
         "set_persona_str": set_persona_str,  # remove newline from the end
@@ -711,46 +671,6 @@ def format_example(df, idx, subject, experiment_name, args, permutations_dict, s
     if args.format == "chat":
         for ch in choices[:num_options]:
             item_str += "\n({}) {}".format(ch, options_strings[permutations_dict[ch]])
-
-    elif args.format == "code_py":
-        item_str += "\n\"\"\"\n\n"
-
-        item_str += "# Define the answers dictionary\n"
-        item_str += "answers_dict = {\n"
-
-        for ch in choices[:num_options]:
-
-            item_str += "\t\"({})\": \"{}\",\n".format(ch, options_strings[permutations_dict[ch]])
-
-        item_str += "}\n"
-
-    elif args.format == "code_cpp":
-        item_str += "\n)\";\n\n"
-
-        item_str += "\t// Define the answers dictionary\n"
-        item_str += "\tstd::map<std::string, std::string> answers_dict = {\n"
-
-        for ch in choices[:num_options]:
-
-            item_str += "\t\t{\"("+ch+")\", \""+options_strings[permutations_dict[ch]]+"\"},\n"
-
-        item_str += "\t};\n"
-
-    elif args.format == "conf_toml":
-
-        item_str = item_str.replace("\n", "\n# ")
-        item_str = f"# {item_str}"
-
-        for ch in choices[:num_options]:
-            item_str += f"\n# ({ch}) {options_strings[permutations_dict[ch]]}"
-
-    elif args.format == "latex":
-        item_str += "\n\\begin{enumerate}[label=(\\Alph*)]\n"
-
-        for ch in choices[:num_options]:
-            item_str += f"\t\\item {options_strings[permutations_dict[ch]]}\n"
-
-        item_str += "\\end{enumerate}"
 
     else:
         raise ValueError(f"Undefined textual format {args.format}.")
@@ -1585,7 +1505,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_name", "-n", type=str, default="")
     parser.add_argument("--pvq-version", type=str, default="pvq_auto", choices=["pvq_auto"])
     parser.add_argument("--engine", "-e", type=str, default="dummy")
-    parser.add_argument("--format", type=str, default="chat", choices=["chat", "code_py", "code_cpp", "conf_toml", "latex"])
+    parser.add_argument("--format", type=str, default="chat", choices=["chat"])
     parser.add_argument('--profile', type=str, help='Profile definition in format "k:v;k:v;k:v", ex. "age:35;interests:reading books"')
     parser.add_argument("--query-in-reply", action="store_true", help="Force the query string as the beginning of the model's reply.")
     parser.add_argument("--base-model-template", action="store_true")
@@ -1610,6 +1530,7 @@ if __name__ == "__main__":
 
     assert args.azure_openai
     assert args.pvq_version == "pvq_auto"
+    assert args.format == "chat"
 
     if not args.data_dir.startswith("data"):
         raise ValueError(f"data_dir should be inside data, and it's {args.data_dir}")
