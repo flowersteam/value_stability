@@ -1,0 +1,15 @@
+{
+  "model_class": "HuggingFaceModel",
+  "model_id": "Qwen/Qwen-72B",
+  "system_message": true,
+  "base_model_template": true,
+  "load_args": {
+    "trust_remote_code": true,
+    "device_map": "auto",
+    "token": "HF_TOKEN"
+  },
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true
+  }
+}

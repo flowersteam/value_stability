@@ -23,8 +23,40 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--no-show", action="store_true")
 parser.add_argument("--fig-name", type=str, default="test")
-parser.add_argument("--assert-n-contexts", type=int, default=5, help="Set to <0 for no asserts")
+parser.add_argument("--assert-n-contexts", type=int, default=-1, help="Set to <0 for no asserts")
+parser.add_argument("--all-models", action="store_true")
 args = parser.parse_args()
+
+if args.all_models:
+    models = sorted([m.strip(".json") for m in os.listdir("./models/configs")])
+else:
+    models = [
+        "llama_2_7b",
+        "llama_2_13b",
+        "llama_2_70b",
+        "llama_2_7b_chat",
+        "llama_2_13b_chat",
+        "llama_2_70b_chat",
+        "Mistral-7B-v0.1",
+        "Mistral-7B-Instruct-v0.1",
+        "Mistral-7B-Instruct-v0.2",
+        "zephyr-7b-beta",
+        "Mixtral-8x7B-v0.1-4b",
+        "Mixtral-8x7B-Instruct-v0.1-4b",
+        "Mixtral-8x7B-v0.1",
+        "Mixtral-8x7B-Instruct-v0.1",
+        "phi-1",
+        "phi-2",
+        "phi-3",
+        "Qwen-7B",
+        "Qwen-14B",
+        "Qwen-72B",
+        "Qwen1.5-72B-Chat",
+        "gpt-3.5-turbo-1106",
+        "gpt-3.5-turbo-0125",
+    ]
+
+assert len(set(models)) == len(models)
 
 
 def model_2_family(model):
@@ -43,8 +75,10 @@ def model_2_family(model):
         return "GPT"
     elif "dummy" == model_lower:
         return "dummy"
+    elif "random" == model_lower:
+        return "random"
     else:
-        raise ValueError(f"Unkwown model family for model {model}.")
+        return model
 
 
 family_2_color = {
@@ -54,7 +88,8 @@ family_2_color = {
     "Phi": "red",
     "Qwen": "purple",
     "GPT": "black",
-    "dummy": "brown"
+    "dummy": "brown",
+    "random": "brown"
 }
 
 family_2_linestyle = {
@@ -118,28 +153,16 @@ def plot_comparison_matrix(models, p_values_matrix, figure_name, title="Model Co
     plt.close()
 
 
-def legend_without_duplicate_labels(ax, loc="best", title=None, legend_loc=None, legend_path=None):
+def legend_without_duplicate_labels(ax, loc="best", title=None, legend_loc=None):
     handles, labels = ax.get_legend_handles_labels()
     unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
-
     # axs[plt_i].legend(bbox_to_anchor=legend_loc, loc="best")
     if legend_loc:
-        loc = "upper left"
-    if not legend_path:
-        ax.legend(*zip(*unique), loc=loc, title=title, fontsize=legend_fontsize, title_fontsize=legend_fontsize, bbox_to_anchor=legend_loc)
+        loc="upper left"
     else:
-        figsize = (6,1)
-        figsize = (1,6)
+        loc="best"
 
-        # save legend separately
-        fig_leg = plt.figure(figsize=figsize)
-        ax_leg = fig_leg.add_subplot(111)
-        ax_leg.legend(*zip(*unique), loc=loc, title=title, fontsize=legend_fontsize, title_fontsize=legend_fontsize, bbox_to_anchor=legend_loc, ncols=figsize[0])
-        ax_leg.axis('off')  # Hide the axes
-        # Save the figure containing only the legend
-        fig_leg.savefig(legend_path, bbox_inches='tight')
-        print(f"Legend saved to: {legend_path}")
-
+    ax.legend(*zip(*unique), loc=loc, title=title, fontsize=legend_fontsize, title_fontsize=legend_fontsize, bbox_to_anchor=legend_loc)
 
 def get_all_ipsative_corrs_str(default_profile):
 
@@ -160,12 +183,16 @@ def get_all_ro_corrs_str(RO_neutral, paired_data_dir):
 
 def run_analysis(eval_script_path, data_dir, assert_n_contexts=None, default_profile=None, paired_data_dir=None, RO_neutral=False, RO_neutral_data_dir=None, no_ips=False):
     # run evaluation script
-    command = f"python {eval_script_path} --result-json-stdout {'--assert-n-dirs ' + str(assert_n_contexts) if assert_n_contexts else ''} {f'--default-profile {default_profile}' if default_profile is not None else ''} {data_dir}/*/* {f'--paired-dirs {paired_data_dir}/*/*' if paired_data_dir is not None else ''} {f'--neutral-ranks --neutral-dir {RO_neutral_data_dir}' if RO_neutral else ''} {'--no-ips' if no_ips else ''}"
+    command = f"python {eval_script_path} --result-json-stdout {'--assert-n-dirs ' + str(assert_n_contexts) if assert_n_contexts else ''} {f'--default-profile {default_profile}' if default_profile is not None else ''} {data_dir}/* {f'--paired-dirs {paired_data_dir}/*/*' if paired_data_dir is not None else ''} {f'--neutral-ranks --neutral-dir {RO_neutral_data_dir}' if RO_neutral else ''} {'--no-ips' if no_ips else ''}"
     print("Command: ", command)
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
 
-    if stderr: print("Error:", stderr.decode())
+    if stderr:
+        command = f"python {eval_script_path} --result-json-stdout {'--assert-n-dirs ' + str(assert_n_contexts) if assert_n_contexts else ''} {f'--default-profile {default_profile}' if default_profile is not None else ''} {data_dir}/*/* {f'--paired-dirs {paired_data_dir}/*/*' if paired_data_dir is not None else ''} {f'--neutral-ranks --neutral-dir {RO_neutral_data_dir}' if RO_neutral else ''} {'--no-ips' if no_ips else ''}"
+        print("(old savedir detected runing Command: ", command)
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
 
     # parse json outputs
     results = json.loads(stdout)
@@ -177,76 +204,13 @@ def run_analysis(eval_script_path, data_dir, assert_n_contexts=None, default_pro
 
 all_data_dirs = []
 
-# Define the models
-models = [
-    "llama_2_7b",
-    "llama_2_13b",
-    "llama_2_70b",  # 2 gpu
-    "llama_2_7b_chat",
-    "llama_2_13b_chat",
-    "llama_2_70b_chat",  # 2 gpu
-    "Mistral-7B-v0.1",
-    "Mistral-7B-Instruct-v0.1",
-    "Mistral-7B-Instruct-v0.2",
-    "zephyr-7b-beta",
-    "Mixtral-8x7B-v0.1-4b",  # 6h
-    "Mixtral-8x7B-Instruct-v0.1-4b",  # 6h
-    "Mixtral-8x7B-v0.1",
-    "Mixtral-8x7B-Instruct-v0.1",
-    "phi-1",
-    "phi-2",
-    "Qwen-7B",
-    "Qwen-14B",
-    "Qwen-72B",
-    "gpt-3.5-turbo-1106",
-    "gpt-3.5-turbo-0125",
-    # "dummy"
-]
 
-models_ft = [
-    "Mistral-7B-v0.1",
-    "Mistral-7B-Instruct-v0.1",
-    "Mistral-7B-Instruct-v0.2",
-    # "Mistral-7B-v0.1_ft_roleplay_filtered_chars_lora_batch_size_16_rank_256",  # lora is just a new train -> unk_token fixed
-    # "Mistral-7B-v0.1_ft_roleplay_filtered_chars_batch_size_16_rank_256",
-    # "Mistral-7B-v0.1_ft_NO_INSTR_TEMPL_roleplay_filtered_chars_batch_size_16_rank_256",
-    # "Mistral-7B-v0.1_ft_NO_INSTR_TEMPL_LOAD_INSTRUCT_roleplay_filtered_chars_batch_size_16_rank_256",
-    # "Mistral-7B-v0.1_ft_roleplay_filtered_chars_lora_target_all_lin_and_train_ml_headbatch_size_16_rank_256",
-    # "Mistral-7B-v0.1_ft_roleplay_filtered_chars_no_peft_batch_size_16_rank_256",
-    # # new params
-    # "Mistral-7B-v0.1_ft_roleplay_filtered_chars_lora_target_all_lin_and_train_ml_head_batch_size_8_rank_64_lr_0.0002_train_on_all",
-    # "Mistral-7B-v0.1_ft_roleplay_filtered_chars_no_peft_batch_size_8_rank_64_lr_2e-05_train_on_all",
-    # "Mistral-7B-v0.1_ft_roleplay_batch_size_16_rank_256",
-    # "Mistral-7B-v0.1_ft_roleplay_batch_size_16_rank_256",
-    # "Mistral-7B-v0.1_ft_NO_INSTR_TEMPL_LOAD_INSTRUCT_roleplay_filtered_chars_batch_size_16_rank_256",
-    # "Mistral-7B-v0.1_ft_NO_INSTR_TEMPL_roleplay_filtered_chars_batch_size_16_rank_256",
-]
 
-plot_models = [
-    "Mixtral-8x7B-Instruct-v0.1",
-    "Mixtral-8x7B-Instruct-v0.1-4b",  # 6h
-    "zephyr-7b-beta",
-    "Mistral-7B-Instruct-v0.2",
-    "Mistral-7B-Instruct-v0.1",
-    "Qwen-72B",
-    "Qwen-14B",
-    "Qwen-7B",
-    "llama_2_70b_chat",  # 2 gpu
-    "llama_2_70b",  # 2 gpu
-    "phi-2",
-    "gpt-3.5-turbo-0125",
-]
+
 
 
 x_label_map = {
     "dummy": "random",
-    # "Mixtral-8x7B-v0.1-4b": "Mixtral-Base-4b",
-    # "Mixtral-8x7B-Instruct-v0.1-4b": "Mixtral-Instruct-4b",
-    # "Mixtral-8x7B-v0.1": "Mixtral-Base",
-    # "Mixtral-8x7B-Instruct-v0.1": "Mixtral-Instruct",
-    # "Mistral-7B-v0.1": "Mistral-Base",
-    # "Mistral-7B-Instruct-v0.1": "Mistral-Instruct-v0.1",
-    # "Mistral-7B-Instruct-v0.2": "Mistral-Instruct-v0.2",
     "llama_2_7b":  "LLaMa_2_7b",
     "llama_2_13b": "LLaMa_2_13b",
     "llama_2_70b": "LLaMa_2_70b",
@@ -255,15 +219,9 @@ x_label_map = {
     "llama_2_70b_chat": "LLaMa_2_70b_chat",
     "phi-2": "Phi-2",
     "phi-1": "Phi-1",
-    # "Mistral-7B-v0.1_ft_roleplay_filtered_chars_batch_size_16_rank_256": "Mistral-Base-roleplay",
-    # "Mistral-7B-Instruct-v0.2_ft_roleplay_batch_size_16_rank_256": "Mistral-Instruct-v0.2-roleplay",
 
 }
 x_label_map = {**x_label_map, **{k: k.replace("_msgs", "") for k in ["1_msgs", "3_msgs", "5_msgs", "7_msgs", "9_msgs"]}}
-
-x_label_map = {**x_label_map, **{
-    m:m.replace("_batch_size_16_rank_256", "").replace("_filtered_chars", "") for m in models_ft}
-}
 
 x_label_map = {**x_label_map, **{
     "gpt-3.5-turbo-1106": "GPT-3.5-1106",
@@ -279,19 +237,18 @@ bars_as_plot = False
 label_ = None
 
 results_dir = "results"
-experiment_dirs = [
-    "sim_conv_pvq_permutations_msgs",
-    # "sim_conv_pvq_tolkien_characters_seeds",
-    # "sim_conv_pvq_famous_people_seeds",
-    # "sim_conv_pvq_tolkien_characters_seeds_NO_SYSTEM",
-    # "sim_conv_tolkien_donation_tolkien_characters_seeds",
-]
-if "permutations_msgs" in experiment_dirs[0]:
-    seed_strings = [f"{i}_msgs/_seed" for i in range(1, 10, 2)]  # msgs (show trends
-    # seed_strings = ["3_msgs/_seed"] # ips (only n=3)
-else:
-    seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
-    # seed_strings = [f"{i}_seed" for i in range(3, 10, 2)]
+# experiment_dirs = [
+#     "sim_conv_pvq_tolkien_characters_seeds",
+#     # "sim_conv_pvq_famous_people_seeds",
+#     # "sim_conv_pvq_tolkien_characters_seeds_NO_SYSTEM",
+#     # "sim_conv_tolkien_donation_tolkien_characters_seeds",
+# ]
+# if "permutations_msgs" in experiment_dirs[0]:
+#     seed_strings = [f"{i}_msgs/_seed" for i in range(1, 10, 2)]  # msgs (show trends
+#     # seed_strings = ["3_msgs/_seed"] # ips (only n=3)
+# else:
+#     seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
+#     # seed_strings = [f"{i}_seed" for i in range(3, 10, 2)]
 
 add_tolkien_ipsative_curve = True
 bar_plots = False
@@ -340,7 +297,6 @@ round_y_lab = 1
 
 show_human_change = False
 legend_loc = None
-save_legend_separately = False
 
 legend_title = "LLM families"
 
@@ -372,11 +328,23 @@ if figure_name == "no_pop_msgs":
 
     add_tolkien_ipsative_curve = True
     bar_plots = False
-    models = plot_models
+    models = [
+        "Mixtral-8x7B-Instruct-v0.1",
+        "Mixtral-8x7B-Instruct-v0.1-4b",  # 6h
+        "zephyr-7b-beta",
+        "Mistral-7B-Instruct-v0.2",
+        "Mistral-7B-Instruct-v0.1",
+        "Qwen-72B",
+        "Qwen-14B",
+        "Qwen-7B",
+        "llama_2_70b_chat",  # 2 gpu
+        "llama_2_70b",  # 2 gpu
+        "phi-2",
+        "gpt-3.5-turbo-0125",
+    ]
     metric = "Ipsative"
     human_change_xloc = -1.0
     msgs_ro_tolk = False
-    add_legend = True
 
     min_y, max_y = -0.1, 1.0  # IPS
     legend_fontsize = 22
@@ -423,7 +391,6 @@ elif figure_name == "tolk_ips_msgs_default_prof":
     interval_figsize_x = 6
     interval_figsize_y = 4
 
-
 elif figure_name == "no_pop_ips":
     experiment_dirs = ["sim_conv_pvq_permutations_msgs"]
     seed_strings = ["3_msgs/_seed"]  # ips (only n=3)
@@ -456,26 +423,13 @@ elif figure_name == "no_pop_ips":
 
 elif figure_name.startswith("tolk_ro_t"):
 
-    if figure_name.endswith("_ft"):
-        models = models_ft
-
-    # title = "Personal value stability of fictional characters with PVQ"
-    # title = "(A)"
-
-    # experiment_dirs = ["sim_conv_pvq_tolkien_characters_seeds"]
-    # seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
-
-    experiment_dirs = ["RERUN_sim_conv_pvq_tolkien_characters_seeds"]
-    seed_strings = [f"{i}_seed" for i in range(0, 9, 2)]
+    experiment_dirs = ["stability_default_params_pvq_tolkien_characters"]
+    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
     add_tolkien_ipsative_curve = False
     bar_plots = True
-
-    add_legend = False
-    save_legend_separately = False
-
+    add_legend = True
     legend_loc = (0.001, 0.99)
-
     metric = "Rank-Order"
     human_change_xloc = 6.8
     msgs_ro_tolk = False
@@ -490,22 +444,47 @@ elif figure_name.startswith("tolk_ro_t"):
 
 elif figure_name.startswith("religion_t"):
 
-    if figure_name.endswith("_ft"):
-        models = models_ft
-
     rotatation_x_labels = 90
 
     # title = "Religion stability of real world persons"
     # title = "(C)"
 
-    experiment_dirs = ["sim_conv_religion_famous_people_seeds"]
-    seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
+    # experiment_dirs = ["sim_conv_religion_famous_people_seeds"]
+    # seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
+    #
+    # experiment_dirs = ["RERUN_sim_conv_religion_famous_people_seeds"]
+    # seed_strings = [f"{i}_seed" for i in range(0, 9, 2)]
+    # models = [
+    #     "llama_2_7b",
+    #     "llama_2_13b",
+    #     "llama_2_70b",  # 2 gpu
+    #     "llama_2_7b_chat",
+    #     "llama_2_13b_chat",
+    #     # "llama_2_70b_chat",  # 2 gpu
+    #     "Mistral-7B-v0.1",
+    #     "Mistral-7B-Instruct-v0.1",
+    #     "Mistral-7B-Instruct-v0.2",
+    #     "zephyr-7b-beta",
+    #     "Mixtral-8x7B-v0.1-4b",  # 6h
+    #     "Mixtral-8x7B-Instruct-v0.1-4b",  # 6h
+    #     "Mixtral-8x7B-v0.1",
+    #     "Mixtral-8x7B-Instruct-v0.1",
+    #     "phi-1",
+    #     "phi-2",
+    #     "Qwen-7B",
+    #     "Qwen-14B",
+    #     "Qwen-72B",
+    #     "gpt-3.5-turbo-1106",
+    #     "gpt-3.5-turbo-0125",
+    #
+    # ]
+    #
+    # experiment_dirs = ["stability_religion_famous_people"]
+    # seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
-    experiment_dirs = ["RERUN_sim_conv_religion_famous_people_seeds"]
-    seed_strings = [f"{i}_seed" for i in range(0, 9, 2)]
 
-    results_dir = "results"
-    experiment_dirs = ["RERUN_sim_conv_religion_famous_people_seeds"]
+    experiment_dirs = ["stability_default_params_religion_famous_people"]
+    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
     add_tolkien_ipsative_curve = False
     bar_plots = True
@@ -554,6 +533,12 @@ elif figure_name.startswith("paired_tolk_ro"):
     add_tolkien_ipsative_curve = False
     bar_plots = True
 
+    if value_to_pair == "Universalism":
+        add_legend = True
+        legend_fontsize = 20
+    else:
+        add_legend = False
+
     metric = "Rank-Order"
     msgs_ro_tolk = False
     show_human_change = False
@@ -570,20 +555,19 @@ elif figure_name.startswith("paired_tolk_ro"):
     else:
         min_y, max_y = -0.1, 0.5
 
-
 elif figure_name.startswith("fam_ro_t"):
-
-    if figure_name.endswith("_ft"):
-        models = models_ft
 
     # title = "Personal value stability of real world personas with PVQ"
     # title = "(B)"
 
-    experiment_dirs = ["sim_conv_pvq_famous_people_seeds"]
-    seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
+    # experiment_dirs = ["sim_conv_pvq_famous_people_seeds"]
+    # seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
 
-    experiment_dirs = ["RERUN_sim_conv_pvq_famous_people_seeds"]
-    seed_strings = [f"{i}_seed" for i in range(0, 9, 2)]
+    # experiment_dirs = ["RERUN_sim_conv_pvq_famous_people_seeds"]
+    # seed_strings = [f"{i}_seed" for i in range(0, 9, 2)]
+
+    experiment_dirs = ["stability_default_params_pvq_famous_people"]
+    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
     add_tolkien_ipsative_curve = False
     bar_plots = True
@@ -602,16 +586,40 @@ elif figure_name.startswith("fam_ro_t"):
 
 elif figure_name.startswith("don_t"):
 
-    if figure_name.endswith("_ft"):
-        models = models_ft
-
     # title = "Donation stability of fictional characters"
     # title = "(A)"
     # experiment_dirs = ["sim_conv_tolkien_donation_tolkien_characters_seeds"]
     # seed_strings = [f"{i}_seed" for i in range(1, 10, 2)]
 
-    experiment_dirs = ["RERUN_sim_conv_tolkien_donation_tolkien_characters_seeds"]
-    seed_strings = [f"{i}_seed" for i in range(0, 9, 2)]
+    # experiment_dirs = ["RERUN_sim_conv_tolkien_donation_tolkien_characters_seeds"]
+    # seed_strings = [f"{i}_seed" for i in range(0, 9, 2)]
+
+    experiment_dirs = ["stability_default_params_tolkien_donation_tolkien_characters"]
+    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
+
+    # models = [
+    #     "llama_2_7b",
+    #     "llama_2_13b",
+    #     "llama_2_70b",  # pushed on GPU
+    #     "llama_2_7b_chat",
+    #     "llama_2_13b_chat",
+    #     "llama_2_70b_chat",  # pushed on GPU
+    #     "Mistral-7B-v0.1",
+    #     "Mistral-7B-Instruct-v0.1",
+    #     "Mistral-7B-Instruct-v0.2",
+    #     "zephyr-7b-beta",
+    #     "Mixtral-8x7B-v0.1-4b",  # 6h  # not on GPU still fail??
+    #     "Mixtral-8x7B-Instruct-v0.1-4b",  # 6h # not on GPU stil fail??
+    #     "Mixtral-8x7B-v0.1", # 3 good  #pushed on GPU
+    #     "Mixtral-8x7B-Instruct-v0.1",# pushed on GPU
+    #     "phi-1",
+    #     "phi-2",
+    #     "Qwen-7B",
+    #     "Qwen-14B",
+    #     "Qwen-72B",  # nije uspio nista izgenerirat, ali svi load (znaci zapne na prvoj generaciji?) pushed on GPU
+    #     "gpt-3.5-turbo-1106",
+    #     "gpt-3.5-turbo-0125",
+    # ]
 
     add_tolkien_ipsative_curve = False
     bar_plots = True
@@ -627,9 +635,6 @@ elif figure_name.startswith("don_t"):
 
 elif figure_name.startswith("bag_t"):
 
-    if figure_name.endswith("_ft"):
-        models = models_ft
-
     # title = "Stealing stability of fictional characters"
     # title = "(B)"
 
@@ -641,8 +646,7 @@ elif figure_name.startswith("bag_t"):
 
     add_tolkien_ipsative_curve = False
     bar_plots = True
-    add_legend = False
-    save_legend_separately = False
+    add_legend = True
     metric = "Rank-Order"
     human_change_xloc = 6.8
     msgs_ro_tolk = False
@@ -694,7 +698,7 @@ elif figure_name == "tolk_ro_msgs_neutral":
     msgs_ro_tolk = True
 
     add_legend = True
-    legend_title = None
+    legend_title=None
     label_ = "Rank-Order stability\n  (with the neutral order)"
 
     metric = "Rank-Order"
@@ -771,23 +775,32 @@ elif figure_name == "llama_sys_no_sys":
     min_y, max_y = -0.1, 0.8  # RO
 
 else:
+    raise ValueError("Unknown figure name")
+    # scratch
+    # results_dir = "results"
+    # experiment_dirs = ["Temp_GS_religion_famous_people_seeds"]
+    # models = ["dummy"]
+    # seed_strings = ["temp_0.4", "temp_0.7", "temp_1.0", "temp_1.5"]
+    #
+    # add_tolkien_ipsative_curve = False
+    # bar_plots = True
+    # add_legend = False
+    #
+    # metric = "Rank-Order"
+    # msgs_ro_tolk = False
+    # show_human_change = False
+    # legend_fontsize = 22
+    #
+    # xticks_fontsize = 15
+    # yticks_fontsize = 18
+    #
+    # min_y, max_y = -0.1, 0.8  # RO
 
     rotatation_x_labels = 90
 
-    # results_dir = "test"
-    # experiment_dirs = ["refactor_RERUN_sim_conv_religion_famous_people_seeds"]
-    # experiment_dirs = ["refactor2_RERUN_sim_conv_religion_famous_people_seeds"]
-
-    # results_dir = "results"
-    # experiment_dirs = ["RERUN_sim_conv_religion_famous_people_seeds"]
-
-    # seed_strings = [f"{i}_seed" for i in range(0, 9, 2)]
-    # seed_strings = [f"0_seed"]
-
-    results_dir = "results"
-    experiment_dirs = ["Temp_GS_religion_famous_people_seeds"]
-    models = ["dummy"]
-    seed_strings = ["temp_0.4", "temp_0.7", "temp_1.0", "temp_1.3"]
+    # models = ["dummy"]
+    experiment_dirs = ["stability_default_params_religion_famous_people"]
+    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
     add_tolkien_ipsative_curve = False
     bar_plots = True
@@ -858,7 +871,7 @@ for experiment_dir in experiment_dirs:
             else:
                 RO_neutral_data_dir = None
 
-            if len(glob.glob(data_dir+"/*/*/*.json")) < 3:
+            if len(glob.glob(data_dir+"/*/*.json")) < 3 and len(glob.glob(data_dir + "/*/*/*.json")) < 3:
                 print(f"No evaluation found at {data_dir}.")
                 # no evaluations
                 eval_data = dict(zip(["Mean-Level", "Rank-Order", "Ipsative"], [np.nan, np.nan, np.nan]))
@@ -1010,9 +1023,10 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
                 ]))) for model in models
             ]
 
+        assert len(models) == len(scores)
+
         for model, m_scores in zip(models, scores):
             family_data[model_2_family(model)].append(m_scores)
-
 
         ys = scores.mean(axis=1)
 
@@ -1135,9 +1149,8 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
                         json.dump(tolkien_ro_curve, f)
 
             else:
-                cs = [family_2_color[model_2_family(x)] for x in xs]
+                cs = [family_2_color.get(model_2_family(x), "black") for x in xs]
                 labs = [model_2_family(x) for x in xs]
-
                 axs[plt_i].bar(xs, ys, yerr=tick_len_se, color=cs, label=labs)
                 if ci_ticks:
                     # axs[plt_i].bar(xs, ys, yerr=tick_len_ci, color=cs, label=labs)
@@ -1148,6 +1161,7 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
 
         axs[plt_i].set_ylim(min_y, max_y)
         axs[plt_i].set_xticklabels([x_label_map.get(m, m) for m in models], rotation=rotatation_x_labels, fontsize=xticks_fontsize)
+        axs[plt_i].set_xticklabels(models, rotation=rotatation_x_labels, fontsize=xticks_fontsize)
         axs[plt_i].set_yticklabels(map(lambda x: np.round(x, round_y_lab), axs[plt_i].get_yticks()), fontsize=yticks_fontsize)
 
         axs[plt_i].set_ylabel(y_label, fontsize=y_label_fontsize)
@@ -1159,17 +1173,8 @@ for plt_i, experiment_dir in enumerate(experiment_dirs):
             axs[plt_i].set_ylim(min_y, max_y)
             axs[plt_i].set_xlabel("Simulated conversation length (n)", fontsize=x_label_fontsize)
 
-        if add_legend or save_legend_separately:
-
-            if save_legend_separately:
-                legend_path = f'visualizations/families_legend.pdf'
-            else:
-                legend_path = None
-
-            legend_without_duplicate_labels(axs[plt_i], loc="best", title=legend_title, legend_loc=legend_loc, legend_path=legend_path)
-
-            if save_legend_separately:
-                exit()
+        if add_legend:
+            legend_without_duplicate_labels(axs[plt_i], loc="best", title=legend_title, legend_loc=legend_loc)
 
     else:
 
@@ -1236,6 +1241,7 @@ for j in range(plt_i + 1, num_rows * num_cols):
 
 plt.tight_layout()
 
+# fig_path = f'visualizations/{figure_name}.svg'
 fig_path = f'visualizations/{figure_name}.pdf'
 print(f"save to: {fig_path}")
 plt.savefig(fig_path)
@@ -1269,7 +1275,7 @@ if families_plot:
     family_means = family_scores.mean(axis=1)
     family_CIs = np.array([st.t.interval(fam_confidence, len(a) - 1, loc=np.mean(a), scale=st.sem(a))[1] for a in family_scores])
     family_tick_len_ci = family_CIs - family_means  # half the conf interval
-    colors = [family_2_color[f] for f in families]
+    colors = [family_2_colorget(f, "black") for f in families]
     family_tick_len_se = np.array([st.sem(a) for a in family_scores])
 
     tick_len_se = np.array([st.sem(a) for a in family_scores])

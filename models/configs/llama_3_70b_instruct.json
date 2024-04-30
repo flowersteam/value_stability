@@ -1,0 +1,20 @@
+{
+  "model_class": "LLama3Model",
+  "model_id": "meta-llama/Meta-Llama-3-70B-Instruct",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {
+    "torch_dtype": "torch.bfloat16",
+    "device_map": "auto",
+    "token": "HF_TOKEN"
+  },
+  "tokenizer_load_args": {},
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true,
+    "top_p": 0.9,
+    "eos_token_id": "defined in LLama3Model",
+    "temperature": 0.6,
+    "num_beams": 1
+  }
+}

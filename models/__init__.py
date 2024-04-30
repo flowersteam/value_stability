@@ -1,0 +1,47 @@
+import os
+import torch
+import json
+import importlib
+
+from .utils import *
+from .model import Model
+from .dummymodel import DummyModel
+from .interactivemodel import InteractiveModel
+from .openaimodel import OpenAIModel
+from .huggingfacemodel import HuggingFaceModel, LLama3Model, Mixtral8x22BModel
+
+hf_token = os.environ["HF_TOKEN"]
+
+def load_model_args(model_name):
+
+    try:
+        with open(f'./models/configs/{model_name}.json', 'r') as file:
+            model_args = json.load(file)
+
+    except FileNotFoundError:
+        raise FileNotFoundError(f"The configuration file for {model_name} could not be found.")
+
+    if 'load_args' in model_args:
+        # parse hf token
+        if "token" in model_args['load_args']:
+            if model_args['load_args']['token'] == "HF_TOKEN":
+                model_args['load_args']['token'] = hf_token
+
+        # parse torch.dtype
+        if "torch_dtype" in model_args['load_args']:
+            if model_args['load_args']['torch_dtype'].startswith("torch."):
+                model_args['load_args']['torch_dtype'] = eval(model_args['load_args']['torch_dtype'])
+
+    # load model class
+    my_module = importlib.import_module("models")
+    ModelClass = getattr(my_module, model_args['model_class'])
+
+    return ModelClass, model_args
+
+
+def create_model(model_name, additional_model_args=None):
+
+    from mergedeep import merge
+    ModelClass, model_args = load_model_args(model_name)
+    model_args = merge(model_args if model_args else {}, additional_model_args)
+    return ModelClass(**model_args)

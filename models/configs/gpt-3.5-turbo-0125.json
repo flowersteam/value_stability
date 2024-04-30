@@ -1,0 +1,12 @@
+{
+  "model_class": "OpenAIModel",
+  "model_id": "gpt-3.5-turbo-0125",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {},
+  "generation_args": {
+    "max_tokens": 100,
+    "n": 1,
+    "temperature": 1.0
+  }
+}

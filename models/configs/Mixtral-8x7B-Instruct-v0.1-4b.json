@@ -1,0 +1,16 @@
+{
+  "model_class": "HuggingFaceModel",
+  "model_id": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+  "system_message": false,
+  "base_model_template": false,
+  "load_args": {
+    "trust_remote_code": true,
+    "load_in_4bit": true,
+    "device_map": "auto",
+    "token": "HF_TOKEN"
+  },
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true
+  }
+}

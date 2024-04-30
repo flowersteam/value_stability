@@ -1,0 +1,13 @@
+{
+  "model_class": "Mixtral8x22BModel",
+  "model_id": "mistralai/Mixtral-8x22B-Instruct-v0.1",
+  "system_message": false,
+  "base_model_template": false,
+  "load_args": {
+    "load_in_4bit": true
+  },
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true
+  }
+}

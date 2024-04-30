@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A imi@a100
 #SBATCH -C a100
-#SBATCH --time=01:29:59
+#SBATCH --time=01:59:59
 #SBATCH --gres=gpu:2
 #SBATCH --array=0-24 # themes x n_seeds -> 6x5 (0-24 wo None, 0-29 for all)
 ##SBATCH --array=0-4 # just grammar
@@ -89,9 +89,6 @@ seed_i=$(( SLURM_ARRAY_TASK_ID % $seed_list_len ))
 theme="${themes[$theme_i]}"
 seed="${seed_list[$seed_i]}"
 
-echo "Theme_i:"$theme_i
-echo "Seed_i:"$seed_i
-
 echo "Theme:"$theme
 echo "Seed:"$seed
 
@@ -118,23 +115,31 @@ all_engines=(
   "Mixtral-8x7B-Instruct-v0.1"
   "phi-2"
   "phi-1"
-  "phi-1.5"
   "Qwen-72B"
   "Qwen-14B"
   "Qwen-7B"
-  "Qwen-72B-Chat"
+  "Mistral-7B-v0.1_ft_roleplay_filtered_chars_lora_batch_size_16_rank_256"
+  "Mistral-7B-v0.1_ft_roleplay_filtered_chars_no_peft_batch_size_16_rank_256"
+  "gpt-3.5-turbo-0125"
+  "gpt-3.5-turbo-1106"
+  "Mistral-7B-v0.1_ft_NO_INSTR_TEMPL_roleplay_filtered_chars_batch_size_16_rank_256"
+  "Mistral-7B-v0.1_ft_NO_INSTR_TEMPL_LOAD_INSTRUCT_roleplay_filtered_chars_batch_size_16_rank_256"
+  "Mistral-7B-v0.1_ft_roleplay_filtered_chars_lora_target_all_lin_and_train_ml_headbatch_size_16_rank_256"
+  "Mistral-7B-v0.1_ft_roleplay_filtered_chars_lora_target_all_lin_and_train_ml_head_batch_size_8_rank_64_lr_0.0002_train_on_all"
+  "Mistral-7B-v0.1_ft_roleplay_filtered_chars_no_peft_batch_size_8_rank_64_lr_2e-05_train_on_all"
+  "Mistral-7B-Instruct-v0.2_ft_roleplay_batch_size_16_rank_256"
   "dummy"
 )
 
 # Select engine based on provided index
 engine="${all_engines[$1]}"
 
-
 echo "Evaluation:$engine:$theme:$permute_options_seed:$n_msgs"
 
 SUBDIR="RERUN_sim_conv_"$test_tag"_"$population_type"_seeds/"$engine"/"$seed"_seed/results_sim_conv_"$population_type"_"$engine"_msgs_"$n_msgs
 SAVE_DIR="results/"$SUBDIR
-#SAVE_DIR="test_results/"$SUBDIR
+
+SAVE_DIR="test/"$SUBDIR
 LOG_DIR="logs/"$SUBDIR
 
 mkdir -p $SAVE_DIR
@@ -148,7 +153,7 @@ if [[ $engine == *"Mistral"* ]] || [[ $engine == *"Mixtral"* ]]; then
 
   echo "Mistral or Mixtral: $engine"
 
-  if [[ $engine == *"Instruct"* ]] ; then
+  if [[ $engine == *"Instruct"* ]] || [[ $engine == *"ft_roleplay"* ]] ; then
     # INSTRUCT MODELS
 
     # mistral, mixtral -> no sys; query
@@ -292,9 +297,9 @@ elif [[ $engine == *"gpt"* ]] ; then
     --experiment_name $experiment_name \
     --pvq-version "pvq_auto" \
     --azure-openai \
+    --overwrite \
+    --verbose \
     --assert-params 2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
-
-#    --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
 else
   echo "Undefined engine: $engine"

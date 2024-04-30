@@ -1,48 +1,18 @@
 #!/bin/bash
+#SBATCH -A imi@a100
+#SBATCH -C a100
+#SBATCH --time=02:29:59
+#SBATCH --gres=gpu:2
+#SBATCH --array=0-24 # themes x n_seeds -> 6x5 (0-24 wo None, 0-29 for all)
+#SBATCH -o slurm_logs/sb_log_%A_%a.out
+#SBATCH -e slurm_logs/sb_log_%A_%a.err
+##SBATCH --qos=qos_gpu-dev
 
 ##########################################################
 # Set the questionnaire and population (using the second command argument)
 ##########################################################
 
-theme="chess"
-n_msgs=3
-permute_options_seed="test"
-#engine="dummy"
-#engine="interactive"
-#engine="gpt-3.5-turbo-0125"
-#engine="phi-3"
-#engine="Qwen1.5-72B-Chat"
-#engine="Mistral-7B-Instruct-v0.1"
-#engine="Mixtral-8x7B-Instruct-v0.1-4b"
-engine="Mixtral-8x22B-Instruct-v0.1-4b"
-#engine="llama_3_8b_instruct"
-#engine="llama_3_70b_instruct"
-#experiment_setting=religion
-
-#engine="llama_2_7b"
-#engine="llama_2_13b"
-#engine="llama_2_70b"
-#engine="llama_2_7b_chat"
-#engine="llama_2_13b_chat"
-#engine="llama_2_70b_chat"
-#engine="Mistral-7B-v0.1"
-#engine="Mistral-7B-Instruct-v0.1"
-#engine="Mistral-7B-Instruct-v0.2"
-#engine="zephyr-7b-beta"
-#engine="Mixtral-8x7B-v0.1-4b"
-#engine="Mixtral-8x7B-Instruct-v0.1-4b"
-#engine="Mixtral-8x7B-v0.1"
-#engine="Mixtral-8x7B-Instruct-v0.1"
-#engine="phi-1"
-#engine="phi-2"
-#engine="Qwen-7B"
-#engine="Qwen-14B"
-#engine="Qwen-72B"
-#engine="gpt-3.5-turbo-1106"
-#engine="gpt-3.5-turbo-0125"
-
-
-experiment_setting=pvq_tolk
+experiment_setting=$2
 
 # Define the configuration based on the experiment_setting
 case "$experiment_setting" in
@@ -87,15 +57,45 @@ echo "test_tag=$test_tag"
 echo "experiment_name=$experiment_name"
 echo "data_dir=$data_dir"
 echo "population_type=$population_type"
-echo "engine=$engine"
-#####################################################
 
 
-SUBDIR="test/"$engine"/"$seed"_seed/results_sim_conv_"$population_type"_"$engine"_msgs_"$n_msgs
-SAVE_DIR="test_results/"$SUBDIR
-LOG_DIR="test_logs/"$SUBDIR
+# Extract parameters: theme and seed
+##########################################################
+themes=("grammar" "joke" "poem" "history" "chess" "None")
+seed_list=(0 2 4 6 8)
 
-#mkdir -p $SAVE_DIR
+seed_list_len=${#seed_list[@]}
+
+
+theme_i=$(( SLURM_ARRAY_TASK_ID / $seed_list_len ))
+seed_i=$(( SLURM_ARRAY_TASK_ID % $seed_list_len ))
+
+
+theme="${themes[$theme_i]}"
+seed="${seed_list[$seed_i]}"
+
+permute_options_seed="$seed"_"$theme_i"
+
+# Other params
+##########################################################
+engine="$1"
+n_msgs=3
+
+echo "ID:"$SLURM_ARRAY_TASK_ID
+echo "Theme:"$theme
+echo "Seed:"$seed
+echo "Seed str:"$permute_options_seed
+echo "Evaluation:$engine:$theme:$permute_options_seed:$n_msgs:$test_tag:$population_type"
+
+# Setup the experiments directories
+##########################################################
+SUBDIR="stability_default_params_${test_tag}_${population_type}/${engine}/seed_${seed}/theme_${theme}"
+
+SAVE_DIR="results/"$SUBDIR
+LOG_DIR="logs/"$SUBDIR
+
+# Start the experiment
+##########################################################
 mkdir -p $LOG_DIR
 
 source $HOME/.bashrc
@@ -106,6 +106,8 @@ else
     conda activate llm_stability
 fi
 
+
+
 python -u evaluate_v3.py \
   --simulated-population-type $population_type \
   --simulated-conversation-theme $theme \
@@ -113,7 +115,6 @@ python -u evaluate_v3.py \
   --simulated-conversation-n-messages $n_msgs \
   --permute-options \
   --permute-options-seed "$permute_options_seed" \
-  --format chat \
   --save_dir $SAVE_DIR \
   --engine "$engine" \
   --data_dir data/$data_dir \

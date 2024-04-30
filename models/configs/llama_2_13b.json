@@ -1,0 +1,21 @@
+{
+  "model_class": "HuggingFaceModel",
+  "model_id": "meta-llama/Llama-2-13b-hf",
+  "system_message": true,
+  "base_model_template": true,
+  "load_args": {
+    "torch_dtype": "torch.float16",
+    "trust_remote_code": true,
+    "device_map": "auto",
+    "token": "HF_TOKEN"
+  },
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true,
+    "top_p": 0.9,
+    "top_k": 50,
+    "temperature": 0.6,
+    "repetition_penalty": 1.2,
+    "num_beams": 1
+  }
+}

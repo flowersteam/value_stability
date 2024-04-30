@@ -64,21 +64,19 @@ all_engines=(
   "Mixtral-8x7B-Instruct-v0.1"
   "phi-2"
   "phi-1"
-  "phi-1.5"
   "Qwen-72B"
   "Qwen-14B"
   "Qwen-7B"
   "Qwen-72B-Chat"
   "dummy"
   "gpt-3.5-turbo-0125"
-#  "gpt-3.5-turbo-1106"
+  "gpt-3.5-turbo-1106"
 #  "gpt-3.5-turbo-0613"
 #  "gpt-3.5-turbo-0301"
 )
 
 # Select engine based on provided index
 engine="${all_engines[$1]}"
-
 
 echo "Evaluation:$engine:$theme:$permute_options_seed:$n_msgs"
 
@@ -236,8 +234,8 @@ elif [[ $engine == *"gpt"* ]] ; then
     --data_dir data/$data_dir \
     --experiment_name $experiment_name \
     --pvq-version "pvq_auto" \
-    --azure-openai \
-    --verbose  2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
+    --verbose \
+    --azure-openai 2>&1 | tee -a $LOG_DIR/log_$permute_options_seed.txt
 
 
 else

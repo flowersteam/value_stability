@@ -150,7 +150,7 @@ def compute_ipsative_stability(dir_2_data, keys, default_profile=None):
 
     return mean_ipsative_stability, part_scores, ips_part_stabilities, ips_part_dir_stabilities, all_corrs
 
-def compute_paired_rank_order_stability(dir_2_data_1, dir_2_data_2, key_1, key_2, test_set_name_1, test_set_name_2, verbose=False, directories_1=None, directories_2=None):
+def compute_paired_rank_order_stability(dir_2_data_1, dir_2_data_2, key_1, key_2, test_set_name_1, test_set_name_2, verbose=False):
 
     if verbose:
         print(colored("\n\n--------------------------------------------------", "green"))
@@ -161,9 +161,14 @@ def compute_paired_rank_order_stability(dir_2_data_1, dir_2_data_2, key_1, key_2
 
     corrs = []
 
-    if directories_1 is None or directories_2 is None:
-        directories_1, directories_2 = list(dir_2_data_1.keys()), list(dir_2_data_2.keys())
+    # order paired_dirs according to conv topics in directories
+    directories_1, dirs_1_themes = zip(
+        *[(dir_1, data['args']['simulate_conversation_theme']) for dir_1, data in dir_2_data_1.items()]
+    )
+    theme_to_dir_2 = {data['args']['simulate_conversation_theme']: dir_2 for dir_2, data in dir_2_data_2.items()}
+    directories_2 = [theme_to_dir_2[theme] for theme in dirs_1_themes]
 
+    # pair directories
     dir_pairs = zip(directories_1, directories_2)
     dir_2_data = {**dir_2_data_1, **dir_2_data_2}
 
@@ -666,23 +671,23 @@ if __name__ == '__main__':
         print(f"IPsative stability is not computed because there only one metric {keys}.")
 
     if args.default_profile:
-        dir_2_data_neut_prof = load_data([args.default_profile])
-        assert len(dir_2_data_neut_prof.keys()) == 1
-        dir_neut_prof = list(dir_2_data_neut_prof.keys())[0]
+        dir_2_data_paired = load_data([args.default_profile])
+        assert len(dir_2_data_paired.keys()) == 1
+        dir_neut_prof = list(dir_2_data_paired.keys())[0]
 
         # per participant normalize the neutral profile
         normalized_scores = []
         for key in keys:
 
-            scores_neut_prof = np.array([d[test_set_name][key] for d in dir_2_data_neut_prof[dir_neut_prof]["per_simulated_participant_metrics"]])
+            scores_neut_prof = np.array([d[test_set_name][key] for d in dir_2_data_paired[dir_neut_prof]["per_simulated_participant_metrics"]])
 
             if "pvq" in test_set_name:
                 # extract per participant average answer
                 average_part_answer_neut_prof = np.array([
-                    np.array(d[test_set_name])[:, 1].astype(float).mean() for d in dir_2_data_neut_prof[dir_neut_prof]["answers"]
+                    np.array(d[test_set_name])[:, 1].astype(float).mean() for d in dir_2_data_paired[dir_neut_prof]["answers"]
                 ])
                 scores_neut_prof_ = scores_neut_prof - average_part_answer_neut_prof
-                scores_neut_prof = per_part_normalized_scores(dir_2_data_neut_prof, dir_neut_prof, test_set_name, key)
+                scores_neut_prof = per_part_normalized_scores(dir_2_data_paired, dir_neut_prof, test_set_name, key)
                 assert all(scores_neut_prof_ == scores_neut_prof)
 
                 normalized_scores.append(scores_neut_prof.copy())
@@ -762,14 +767,8 @@ if __name__ == '__main__':
         print("\n\nPaired Rank-Order stability\n")
         args.paired_dirs = [d for d in args.paired_dirs if "results.json" in os.listdir(d)]
 
-        for dir_, ben_ in zip(args.directories, args.paired_dirs):
-            # model and seed should be analogous
-            assert dir_.split("/")[2:4] == ben_.split("/")[2:4]
+        dir_2_data_paired = load_data(args.paired_dirs)
 
-            # same conversation theme
-            assert dir_.split("chat__")[1].split("202")[0] == ben_.split("chat__")[1].split("202")[0]
-
-        dir_2_data_neut_prof = load_data(args.paired_dirs)
 
         values_names = ["Benevolence", "Universalism", "Power", "Achievement", "Tradition", "Conformity", "Security",
                         "Self-Direction", "Stimulation", "Hedonism"]
@@ -781,7 +780,7 @@ if __name__ == '__main__':
             all_proxy_stabs[value] = {}
             for race in ["elves", 'dwarves', 'orcs', 'humans', 'hobbits']:
                 mean_paired_rank_order_stability, _, _, all_proxy_stabs_ = compute_paired_rank_order_stability(
-                    dir_2_data, dir_2_data_neut_prof,
+                    dir_2_data, dir_2_data_paired,
                     value, f"Donation {race}",
                     "pvq_auto", "tolkien_donation"
                 )

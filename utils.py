@@ -1,4 +1,20 @@
 import os
+import time
+import numpy as np
+
+def secs_2_hms(s):
+    minutes, seconds = divmod(s, 60)
+    hours, minutes = divmod(minutes, 60)
+    return hours, minutes, seconds
+
+
+def estimate_eta(start_time, progress):
+    # estimate ETA
+    curr_time = time.time()
+    elapsed_time = curr_time - start_time
+    eta = (elapsed_time / progress) * (1 - progress)
+    return eta
+
 
 def print_chat_messages(messages):
     print("*********************")
@@ -13,14 +29,14 @@ def remove_prefix(s, pref):
         return s[len(pref):]
     return s
 
-def extract_answer_tokens(answers, tokenizer):
-    answer_tokens = {a: [] for a in answers}
-    for tok_ind in range(len(tokenizer)):
-        tok = tokenizer.decode([tok_ind])
-        if tok in answers:
-            answer_tokens[tok].append(tok_ind)
 
-    return answer_tokens
+def softmax(x):
+    z = x - max(x)
+    numerator = np.exp(z)
+    denominator = np.sum(numerator)
+    softmax = numerator/denominator
+    return softmax
+
 
 def get_hf_cache_dir():
     hostname = os.uname()[1]
@@ -31,6 +47,8 @@ def get_hf_cache_dir():
     else:
         hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
     return hf_cache_dir
+
+
 def estimate_and_print_gpt_prices(gpt_tokens_count, engine):
     assert gpt_tokens_count.keys() == {"input", "output"}
 
@@ -72,6 +90,7 @@ def estimate_and_print_gpt_prices(gpt_tokens_count, engine):
         price_ouput = (out_toks / 1_000_000) * price_1M_out
         tot_price = price_input + price_ouput
         print(f"\t{gpt_eng} ~ {tot_price:.2f}$ (in: {price_input:.2f}$ out: {price_ouput:.2f}$)")
+
 
 openai_2_azure_tag = {
     "gpt-3.5-turbo-0125": "gpt-35-turbo-0125",

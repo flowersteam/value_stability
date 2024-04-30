@@ -1,9 +1,8 @@
 visualizations/
-models/
 data/*
 logs/*
 .idea/
-results/
+results*
 .cache/
 *__pycache__*
 backup_run_scripts/
