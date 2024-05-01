@@ -226,7 +226,7 @@ We can also evaluate many seeds and models at once with the `campaign_data_analy
 It takes the following arguments:
 - `--fig-name` argument defines the experiment type to evaluate (looks in the correct results subdirectory), options are: `tolk_ro_t,fam_ro_t,religion_t,don_t,bag_t`
 - `--assert-n-context 5` ensures that each seed has 5 topics
-- `--all-models` evaluates all models in the `./models/configs` directory, if you do not set this argument you can manually define the models list on line 33.
+- `--all-models` evaluates all models in the `./models/configs` directory, if you do not set this argument you can manually define the models list on line `33`.
 
 
 ```commandline
@@ -315,5 +315,7 @@ For example, using:
 ```commandline
 sbatch run_campaign_seeds.sh mymodelname pvq_tolk
 ```
+
+If a model requires a different transformers version, you can define the conda env to use in the `run_camapaign_seeds.sh` script on line `103`
 
 
