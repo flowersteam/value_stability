@@ -8,7 +8,9 @@ from .model import Model
 from .dummymodel import DummyModel
 from .interactivemodel import InteractiveModel
 from .openaimodel import OpenAIModel
-from .huggingfacemodel import HuggingFaceModel, LLama3Model, Mixtral8x22BModel
+from .huggingfacemodel import *
+
+from transformers import BitsAndBytesConfig
 
 hf_token = os.environ["HF_TOKEN"]
 
@@ -31,6 +33,9 @@ def load_model_args(model_name):
         if "torch_dtype" in model_args['load_args']:
             if model_args['load_args']['torch_dtype'].startswith("torch."):
                 model_args['load_args']['torch_dtype'] = eval(model_args['load_args']['torch_dtype'])
+
+        if "quantization_config" in model_args['load_args']:
+            model_args['load_args']['quantization_config'] = eval(model_args['load_args']['quantization_config'])
 
     # load model class
     my_module = importlib.import_module("models")

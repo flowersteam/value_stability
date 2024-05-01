@@ -3,9 +3,7 @@
   "model_id": "mistralai/Mixtral-8x22B-Instruct-v0.1",
   "system_message": false,
   "base_model_template": false,
-  "load_args": {
-    "quantization_config": "BitsAndBytesConfig(load_in_4bit=True)"
-  },
+  "load_args": {},
   "tokenizer_load_args": {},
   "generation_args": {
     "max_new_tokens": 100,

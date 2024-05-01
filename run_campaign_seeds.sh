@@ -70,7 +70,6 @@ seed_list_len=${#seed_list[@]}
 theme_i=$(( SLURM_ARRAY_TASK_ID / $seed_list_len ))
 seed_i=$(( SLURM_ARRAY_TASK_ID % $seed_list_len ))
 
-
 theme="${themes[$theme_i]}"
 seed="${seed_list[$seed_i]}"
 
@@ -100,11 +99,15 @@ mkdir -p $LOG_DIR
 
 source $HOME/.bashrc
 
-if [[ "$engine" == "phi-1" || "$engine" == "phi-2" || "$engine" == "Qwen1.5*"  || "$engine" == "llama_3*" || "$engine" == "command_r_plus" ]]; then
-    conda activate llm_stability_phi
-else
-    conda activate llm_stability
-fi
+## define the conda env to use
+case "$engine" in
+    phi-1|phi-2|Qwen1.5*|llama_3*|command_r_plus*|Mixtral-8x22B*)
+        conda activate llm_stability_phi
+        ;;
+    *)
+        conda activate llm_stability
+        ;;
+esac
 
 
 

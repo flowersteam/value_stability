@@ -162,10 +162,16 @@ def compute_paired_rank_order_stability(dir_2_data_1, dir_2_data_2, key_1, key_2
     corrs = []
 
     # order paired_dirs according to conv topics in directories
-    directories_1, dirs_1_themes = zip(
-        *[(dir_1, data['args']['simulate_conversation_theme']) for dir_1, data in dir_2_data_1.items()]
-    )
-    theme_to_dir_2 = {data['args']['simulate_conversation_theme']: dir_2 for dir_2, data in dir_2_data_2.items()}
+    try:
+        directories_1, dirs_1_themes = zip(
+            *[(dir_1, data['args']['simulated_conversation_theme']) for dir_1, data in dir_2_data_1.items()]
+        )
+        theme_to_dir_2 = {data['args']['simulated_conversation_theme']: dir_2 for dir_2, data in dir_2_data_2.items()}
+    except:
+        directories_1, dirs_1_themes = zip(
+            *[(dir_1, data['args']['simulate_conversation_theme']) for dir_1, data in dir_2_data_1.items()]
+        )
+        theme_to_dir_2 = {data['args']['simulate_conversation_theme']: dir_2 for dir_2, data in dir_2_data_2.items()}
     directories_2 = [theme_to_dir_2[theme] for theme in dirs_1_themes]
 
     # pair directories
@@ -633,7 +639,7 @@ if __name__ == '__main__':
         ignore = ["format_chat___"]
 
     # filter directories without results.json
-    args.directories = [d for d in args.directories if "results.json" in os.listdir(d)]
+    args.directories = [d for d in args.directories if os.path.isdir(d) and "results.json" in os.listdir(d)]
 
     args.directories = [d for d in args.directories if not any([i in d for i in ignore])]
     num_dirs = len([d for d in args.directories if os.path.isdir(d)])
@@ -733,6 +739,7 @@ if __name__ == '__main__':
         dir_2_data_neutral = load_data([neutral_dir])
 
         # assert no topic
+        assert dir_2_data_neutral[neutral_dir]['args']['simulated_conversation_theme'] is None
         assert dir_2_data_neutral[neutral_dir]['args']['simulate_conversation_theme'] is None
 
         values_names = [

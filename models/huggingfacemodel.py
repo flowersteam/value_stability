@@ -3,6 +3,10 @@ from .model import Model
 from .utils import *
 import time
 
+import torch
+
+from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
+
 def get_hf_cache_dir():
     return os.environ['HF_HOME']
 
@@ -10,9 +14,7 @@ def get_hf_cache_dir():
 hf_cache_dir = get_hf_cache_dir()
 os.environ['HF_HOME'] = hf_cache_dir
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
 
-import torch
 
 
 class StoppingCriteriaSub(StoppingCriteria):
@@ -238,11 +240,9 @@ class LLama3Model(HuggingFaceModel):
             self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
         ]
 
+
 from mistral_common.tokens.instruct.normalize import ChatCompletionRequest
-from mistral_common.protocol.instruct.messages import (
-    AssistantMessage,
-    UserMessage,
-)
+from mistral_common.protocol.instruct.messages import AssistantMessage, UserMessage
 
 def to_mistral_msg(msg):
 
