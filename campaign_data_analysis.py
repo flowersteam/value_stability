@@ -248,17 +248,18 @@ y_label = None
 FDR_test = True
 fam_min_y, fam_max_y = -0.1, 0.8
 
+seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
+
 if figure_name == "tolk_ro_t":
 
     experiment_dirs = ["stability_default_params_pvq_tolkien_characters"]
-    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
     add_legend = True
     legend_loc = (0.001, 0.99)
     metric = "Rank-Order"
     human_change_xloc = 6.8
     show_human_change = True
-    legend_fontsize = 22
+    legend_fontsize = 18
     rotatation_x_labels = 90
 
     xticks_fontsize = 15
@@ -269,9 +270,8 @@ if figure_name == "tolk_ro_t":
 elif figure_name == "fam_ro_t":
 
     experiment_dirs = ["stability_default_params_pvq_famous_people"]
-    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
-    add_legend = True
+    add_legend = False
     metric = "Rank-Order"
     human_change_xloc = 6.8
 
@@ -281,14 +281,13 @@ elif figure_name == "fam_ro_t":
     xticks_fontsize = 15
     yticks_fontsize = 18
 
-    min_y, max_y = -0.1, 1.0  # RO
+    min_y, max_y = -0.1, 0.8  # RO
 
 elif figure_name == "religion_t":
 
     rotatation_x_labels = 90
 
     experiment_dirs = ["stability_default_params_religion_famous_people"]
-    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
     add_legend = False
 
@@ -304,7 +303,6 @@ elif figure_name == "religion_t":
 elif figure_name == "don_t":
 
     experiment_dirs = ["stability_default_params_tolkien_donation_tolkien_characters"]
-    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
     metric = "Rank-Order"
     human_change_xloc = 6.8
@@ -318,7 +316,6 @@ elif figure_name == "don_t":
 elif figure_name.startswith("bag_t"):
 
     experiment_dirs = ["stability_default_params_tolkien_bag_tolkien_characters"]
-    seed_strings = [f"{i}_seed" for i in range(0, 9, 2)]
 
     add_legend = True
     metric = "Rank-Order"
@@ -338,7 +335,6 @@ elif figure_name == "no_pop_ips":
     metric = "Ipsative"
     show_human_change = True
     human_change_xloc = -1.0
-
 
     human_data_fontsize = 8
     xticks_fontsize = 17
@@ -378,7 +374,6 @@ elif figure_name.startswith("paired_tolk_ro"):
 
     experiment_dirs = ["stability_default_params_pvq_tolkien_characters"]
     paired_dir = "stability_default_params_tolkien_donation_tolkien_characters"
-    seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 
     if value_to_pair == "Universalism":
         add_legend = True

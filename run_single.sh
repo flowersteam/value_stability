@@ -116,7 +116,7 @@ else
 fi
 
 
-python -u evaluate_v3.py \
+python -u evaluate.py \
   --engine "$engine" \
   --experiment_name $experiment_name \
   --data_dir data/$data_dir \

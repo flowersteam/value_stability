@@ -34,7 +34,7 @@ os.environ['HF_HOME'] = hf_cache_dir
 opening_questions_for_themes = {
     "poem": "Hello, let's write a poem together. You start by the first verse I'll add the second one, and so on.",
     "joke": "Tell me a joke.",
-    "history": "What is the significance of the battle of Hastings. Answer in two sentences.",  # slight collapse
+    "history": "What is the significance of the battle of Hastings. Answer in two sentences.",
     "chess": "1. e4",
     "grammar": "Can you check this sentence for grammar? \n Whilst Jane was waiting to meet hers friend their nose started bleeding.",
 }
@@ -116,9 +116,7 @@ class StoppingCriteriaSub(StoppingCriteria):
         return any([stop in generation for stop in self.stops])
 
 
-def simulate_conversation(args, engine, sim_engine, model_set_persona_string=None, llm_generator=None, simulated_participant=None):
-
-    opening_question = opening_questions_for_themes[args.simulated_conversation_theme]
+def simulate_conversation(args, opening_question, model_set_persona_string=None, llm_generator=None, simulated_participant=None):
 
     conversation = [opening_question]
 
@@ -158,7 +156,6 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
                     "content": model_set_persona_string
                 }] + simulated_conv_messages
 
-            engine_ = engine
             assistant_label = labels_dict["persona"]["assistant_label"]
             user_label = labels_dict["persona"]["user_label"]
             system_label = labels_dict["persona"]["system_label"]
@@ -167,8 +164,6 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
             # gpt as human
             assert simulated_conv_messages[0]['role'] == "assistant"
 
-            # user doesn't know the chatbots persona -> change this?
-            # if args.base_model_template:
             if llm_generator.base_model_template:
                 if args.simulated_human_knows_persona:
                     sys_msg = f"The following is a conversation between a human and a chatbot. The chatbot is pretending to be {simulated_participant_name}. The human's every reply must be in one sentence only."
@@ -189,7 +184,6 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
             user_label = labels_dict["human"]["user_label"]
             system_label = labels_dict["human"]["system_label"]
 
-        # if not args.base_model_template:
         if not llm_generator.base_model_template:
             simulated_conv_messages = fix_alternating_msg_order(simulated_conv_messages)
 
@@ -204,45 +198,6 @@ def simulate_conversation(args, engine, sim_engine, model_set_persona_string=Non
         if args.verbose:
             print_chat_messages(simulated_conv_messages)
 
-
-        # llm_generator_type = type(llm_generator)
-        # if llm_generator_type == HuggingFaceModel:
-        #     response = llm_generator.generate(
-        #         messages=simulated_conv_messages,
-        #         generation_kwargs=dict(
-        #             max_new_tokens=args.simulated_conversation_msg_max_tokens,
-        #             do_sample=True,
-        #             top_p=args.simulated_conversation_top_p,
-        #             temperature=args.simulated_conversation_temp,
-        #             # top_k=50,
-        #             # repetition_penalty=1.2,  # logit / (T * penalty*bool(token present) )
-        #             num_beams=1,
-        #         ),
-        #         assistant_label=assistant_label,
-        #         user_label=user_label,
-        #         system_label=system_label,
-        #         stop_words_up=stop_words_up
-        #     )
-        #
-        # elif llm_generator_type == OpenAIModel:
-        #     response = llm_generator.generate(
-        #         messages=simulated_conv_messages,
-        #         generation_kwargs=dict(
-        #             max_tokens=args.simulated_conversation_msg_max_tokens,
-        #             top_p=args.simulated_conversation_top_p,
-        #             temperature=args.simulated_conversation_temp,
-        #             # not the same as hf repetition_penalty
-        #             # presence_penalty=0.2,  # logit - penalty*bool(token present)
-        #             n=1,
-        #         )
-        #     )
-        # elif llm_generator_type in [InteractiveModel, DummyModel]:
-        #     response = llm_generator.generate()
-        #
-        # else:
-        #     raise NotImplementedError(f"Simulated conversations not implemented for {engine_}")
-
-        # if args.base_model_template:
         if llm_generator.base_model_template:
             response_up = response.upper()
             stop_word_ind = np.min([response_up.index(sw) if sw in response_up else np.inf for sw in stop_words_up])
@@ -387,7 +342,7 @@ def hash_chat_conv(msgs_conv):
     return hex_dig
 
 
-def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simulated_participant=None):
+def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simulated_participant=None, simulated_conversation_theme=None):
     cors = []
     all_probs = []
     all_lprobs = []
@@ -435,7 +390,7 @@ def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simu
         else:
             gpt_tokenizer = None
 
-        if args.simulated_conversation_theme:
+        if simulated_conversation_theme:
 
             set_persona_str = prompt["set_persona_str"]
             if messages_conv is None:
@@ -444,8 +399,7 @@ def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simu
 
                 messages_conv, messages_conv_hash = simulate_conversation(
                     args=args,
-                    engine=engine,
-                    sim_engine=engine,
+                    opening_question=opening_questions_for_themes[simulated_conversation_theme],
                     model_set_persona_string=set_persona_str,
                     simulated_participant=simulated_participant,
                     llm_generator=llm_generator,
@@ -473,7 +427,7 @@ def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simu
             messages = construct_messages(
                 prompt=prompt,
                 system_message=True,
-                messages_conv=messages_conv if args.simulated_conversation_theme else None,
+                messages_conv=messages_conv if simulated_conversation_theme else None,
             )
             n_input_tokens = sum([len(gpt_tokenizer.encode(msg['content'])) for msg in messages])
 
@@ -483,7 +437,7 @@ def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simu
         messages = construct_messages(
             prompt=prompt,
             system_message=llm_generator.system_message,
-            messages_conv=messages_conv if args.simulated_conversation_theme else None,
+            messages_conv=messages_conv if simulated_conversation_theme else None,
         )
 
         if args.verbose:
@@ -687,6 +641,7 @@ def main(args):
                 participant_perm_dicts=participant_perm_dicts,
                 llm_generator=llm_generator,
                 simulated_participant=simulated_participant,
+                simulated_conversation_theme=args.simulated_conversation_theme,
             )
             all_cors.append(cors)
             gpt_tokens_total['input'] += gpt_tokens['input']
@@ -826,8 +781,8 @@ if __name__ == "__main__":
     parser.add_argument("--permute-options", "-po", action="store_true")
     parser.add_argument("--azure-openai", action="store_true")
     parser.add_argument("--simulated-human-knows-persona", action="store_true")
-    parser.add_argument("--simulated-population-type", "-pop", type=str, default="tolkien_characters", choices=["permutations", "tolkien_characters", "famous_people", "llm_personas", "user_personas", "anes"])
-    parser.add_argument("--permutations", "-p", type=int, default=1)  # permutations as a population type
+    parser.add_argument("--simulated-population-type", "-pop", type=str, default="tolkien_characters", choices=["permutations", "tolkien_characters", "famous_people"])
+    parser.add_argument("--permutations", "-p", type=int, default=50)
     parser.add_argument("--permute-options-seed", type=str)
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args()
@@ -853,9 +808,6 @@ if __name__ == "__main__":
 
     if args.permute_options and args.permute_options_seed is None:
         raise ValueError("Permute options string should be defined for stability")
-
-    if ("gpt-3.5" in args.engine and args.permutations > 50) or ("gpt-4" in args.engine and args.permutations > 5):
-        raise ValueError(f"Are you sure you want to use {args.permutations} with {args.engine}??")
 
     start_time = time.time()
     main(args)

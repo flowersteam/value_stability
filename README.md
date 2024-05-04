@@ -49,7 +49,7 @@ You can run one evaluation with the following command
 
 ```
 theme="joke"
-python -u evaluate_v3.py \
+python -u evaluate.py \
 --engine "dummy" \
 --experiment_name pvq_test \
 --data_dir data/data_pvq \
@@ -71,7 +71,7 @@ Now lets run the same command for "joke":
 
 ```
 theme="joke"
-python -u evaluate_v3.py \
+python -u evaluate.py \
 --engine "dummy" \
 --experiment_name pvq_test \
 --data_dir data/data_pvq \
@@ -89,7 +89,7 @@ python -u evaluate_v3.py \
 Now lets run the same command for "grammar":
 ```
 theme="grammar"
-python -u evaluate_v3.py \
+python -u evaluate.py \
 --engine "dummy" \
 --experiment_name pvq_test \
 --data_dir data/data_pvq \
