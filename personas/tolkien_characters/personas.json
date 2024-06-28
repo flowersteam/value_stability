@@ -1,0 +1,302 @@
+[
+    {
+        "name": "Gandalf",
+        "description": "Gandalf from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Gollum",
+        "description": "Gollum from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Sm\u00e9agol",
+        "description": "Sm\u00e9agol from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Aragorn",
+        "description": "Aragorn from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Sauron",
+        "description": "Sauron from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Saruman",
+        "description": "Saruman from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Celeborn",
+        "description": "Celeborn from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Galadriel",
+        "description": "Galadriel from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Tom Bombadil",
+        "description": "Tom Bombadil from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Elrond",
+        "description": "Elrond from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Frodo Baggins",
+        "description": "Frodo Baggins from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Maedhros",
+        "description": "Maedhros from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Finrod Felagund",
+        "description": "Finrod Felagund from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Glorfindel",
+        "description": "Glorfindel from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Goldberry",
+        "description": "Goldberry from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Bilbo Baggins",
+        "description": "Bilbo Baggins from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Smaug",
+        "description": "Smaug from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Morgoth",
+        "description": "Morgoth from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Faramir",
+        "description": "Faramir from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "\u00c9owyn",
+        "description": "\u00c9owyn from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Samwise Gamgee",
+        "description": "Samwise Gamgee from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "F\u00ebanor",
+        "description": "F\u00ebanor from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Th\u00e9oden",
+        "description": "Th\u00e9oden from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Boromir",
+        "description": "Boromir from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "T\u00farin Turambar",
+        "description": "T\u00farin Turambar from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Thranduil",
+        "description": "Thranduil from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Beorn",
+        "description": "Beorn from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Arwen",
+        "description": "Arwen from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Halbarad",
+        "description": "Halbarad from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Isildur",
+        "description": "Isildur from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Gothmog (Balrog)",
+        "description": "Gothmog (Balrog) from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Lungorthin",
+        "description": "Lungorthin from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Celebrimbor",
+        "description": "Celebrimbor from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Gil-galad",
+        "description": "Gil-galad from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Meriadoc Brandybuck",
+        "description": "Meriadoc Brandybuck from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Treebeard",
+        "description": "Treebeard from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Shelob",
+        "description": "Shelob from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Radagast",
+        "description": "Radagast from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Elendil",
+        "description": "Elendil from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Denethor",
+        "description": "Denethor from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "\u00c9omer",
+        "description": "\u00c9omer from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Legolas",
+        "description": "Legolas from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "H\u00farin",
+        "description": "H\u00farin from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Thorin Oakenshield",
+        "description": "Thorin Oakenshield from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Peregrin Took",
+        "description": "Peregrin Took from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Thingol",
+        "description": "Thingol from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Gr\u00edma Wormtongue",
+        "description": "Gr\u00edma Wormtongue from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "E\u00e4rendil",
+        "description": "E\u00e4rendil from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Elwing",
+        "description": "Elwing from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "L\u00fathien",
+        "description": "L\u00fathien from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Beren",
+        "description": "Beren from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Tuor",
+        "description": "Tuor from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Idril",
+        "description": "Idril from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Finw\u00eb",
+        "description": "Finw\u00eb from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "M\u00edriel",
+        "description": "M\u00edriel from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Ungoliant",
+        "description": "Ungoliant from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Thuringwethil",
+        "description": "Thuringwethil from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Melian",
+        "description": "Melian from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "F"
+    },
+    {
+        "name": "Durin's Bane",
+        "description": "Durin's Bane from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    },
+    {
+        "name": "Gimli",
+        "description": "Gimli from J. R. R. Tolkien's Middle-earth legendarium.",
+        "gender": "M"
+    }
+]

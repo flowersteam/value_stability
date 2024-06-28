@@ -1,9 +1,15 @@
+from termcolor import colored
 
 def print_chat_messages(messages):
     print("*********************")
-    print("Messages:")
     for msg in messages:
-        print(f"{msg['role'].upper()} : {msg['content']}")
+        role = msg['role'].upper()
+        color = {
+            "SYSTEM": "red",
+            "USER": "blue",
+            "ASSISTANT": "green",
+        }.get(role, None)
+        print(f"{colored(role + ':', color)}{msg['content']}")
     print("*********************")
 
 def fix_alternating_msg_order(messages):

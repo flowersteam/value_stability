@@ -2,6 +2,22 @@ import os
 import time
 import numpy as np
 
+def map_choice_to_number(letter, permutations_dict, offset=1):
+    # A-F -> 1-6
+    # find index of letter in choices and add 1
+    number = permutations_dict[letter] + offset
+    return number
+
+def create_choices_str(choices, options):
+    if len(choices) < len(options):
+        raise ValueError("Not enough choice prefixes.")
+
+    choices_str = ""
+    for ch, op in zip(choices, options):
+        choices_str += "\n({}) {}".format(ch, op)
+
+    return choices_str
+
 def secs_2_hms(s):
     minutes, seconds = divmod(s, 60)
     hours, minutes = divmod(minutes, 60)
@@ -18,7 +34,6 @@ def estimate_eta(start_time, progress):
 
 def print_chat_messages(messages):
     print("*********************")
-    print("Messages:")
     for msg in messages:
         print(f"{msg['role'].upper()} : {msg['content']}")
     print("*********************")

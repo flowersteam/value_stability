@@ -1,4 +1,6 @@
 import os
+import time
+
 from termcolor import colored
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
@@ -16,7 +18,8 @@ class OpenAIModel(Model):
 
     openai_2_azure_tag = {
         "gpt-3.5-turbo-0125": "gpt-35-turbo-0125",
-        "gpt-3.5-turbo-1106": "gpt-35-turbo-1106"
+        "gpt-3.5-turbo-1106": "gpt-35-turbo-1106",
+        "gpt-4o-0513": "gpt-4o-0513",
     }
 
     def __init__(self, model_id, use_azure, generation_args, *args, **kwargs):
@@ -33,25 +36,35 @@ class OpenAIModel(Model):
 
         if self.use_azure:
             print(colored("Using Azure OPENAI API", "red"))
+            time.sleep(1)
 
             if self.model_id == "gpt-3.5-turbo-0125":
                 self.model = AzureOpenAI(
-                    azure_endpoint="https://petunia-grgur.openai.azure.com/",
+                    azure_endpoint=os.getenv(f"AZURE_OPENAI_ENDPOINT_gpt_35_turbo_0125"),
                     api_key=os.getenv("AZURE_OPENAI_KEY_gpt_35_turbo_0125"),
-                    api_version="2024-02-15-preview"
+                    api_version=os.getenv("AZURE_OPENAI_API_VERSION_gpt_35_turbo_0125"),
                 )
 
             elif self.model_id == "gpt-3.5-turbo-1106":
                 self.model = AzureOpenAI(
-                    azure_endpoint="https://petunia-grgur-gpt-35-turbo-1106.openai.azure.com/",
+                    azure_endpoint=os.getenv(f"AZURE_OPENAI_ENDPOINT_gpt_35_turbo_1106"),
                     api_key=os.getenv("AZURE_OPENAI_KEY_gpt_35_turbo_1106"),
-                    api_version="2024-02-15-preview"
+                    api_version=os.getenv("AZURE_OPENAI_API_VERSION_gpt_35_turbo_1106"),
                 )
+
+            elif self.model_id == "gpt-4o-0513":
+                self.model = AzureOpenAI(
+                    azure_endpoint=os.getenv(f"AZURE_OPENAI_ENDPOINT_gpt_4o_0513"),
+                    api_key=os.getenv("AZURE_OPENAI_KEY_gpt_4o_0513"),
+                    api_version=os.getenv("AZURE_OPENAI_API_VERSION_gpt_4o_0513"),
+                )
+
             else:
                 raise NotImplementedError("Azure endpoint not found.")
 
         else:
             print(colored("Using OPENAI API", "red"))
+            time.sleep(1)
             self.model = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
 
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
@@ -71,7 +84,12 @@ class OpenAIModel(Model):
         if label_2_text_option_dict is None:
             raise ValueError("label_2_text_option_dict must be provided")
 
+        messages = messages[:]
         messages.append({"role": "assistant", "content": query_string})
+
+        if self.verbose:
+            print(f">>> {self.__class__}.predict")
+            print_chat_messages(messages)
 
         # get the encoding for each letter in choices
         logit_bias = {self.tokenizer.encode(c)[0]: 100 for c in answers}
@@ -86,11 +104,21 @@ class OpenAIModel(Model):
         )
 
         generation = c.choices[0].message.content
+
+        if self.verbose:
+            print(f"-(generation)->{generation}")
+
         lprobs = dummy_lprobs_from_generation(generation, answers, label_2_text_option_dict)
 
         return generation, lprobs
 
     def generate(self, messages, additional_generation_args=None, *args, **kwargs):
+
+        messages = messages[:]
+
+        if self.verbose:
+            print(f">>> {self.__class__}.generate")
+            print_chat_messages(messages)
 
         if additional_generation_args is not None:
             generation_args = {**self.generation_args, **additional_generation_args}
@@ -107,6 +135,9 @@ class OpenAIModel(Model):
 
         if response is None:
             response = " "
+
+        if self.verbose:
+            print(f"-(generation)->{response}")
 
         return response
 

@@ -1,0 +1,18 @@
+{
+  "model_class": "HuggingFaceModel",
+  "model_id": "Qwen/Qwen1.5-72B-Chat",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {
+    "trust_remote_code": true,
+    "device_map": "auto",
+    "torch_dtype": "auto",
+    "token": "HF_TOKEN"
+  },
+  "tokenizer_load_args": {},
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true,
+    "temperature": 0.7
+  }
+}

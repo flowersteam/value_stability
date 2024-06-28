@@ -1,4 +1,5 @@
 import os
+
 from .model import Model
 from .utils import *
 import time
@@ -6,6 +7,13 @@ import time
 import torch
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
+import numpy as np
+
+try:
+    from vllm import LLM, SamplingParams
+except:
+    pass
+
 
 def get_hf_cache_dir():
     return os.environ['HF_HOME']
@@ -13,8 +21,6 @@ def get_hf_cache_dir():
 
 hf_cache_dir = get_hf_cache_dir()
 os.environ['HF_HOME'] = hf_cache_dir
-
-
 
 
 class StoppingCriteriaSub(StoppingCriteria):
@@ -40,6 +46,7 @@ class HuggingFaceModel(Model):
             load_args=None,
             generation_args=None,
             tokenizer_load_args=None,
+            use_vllm=False,
             *args,
             **kwargs
     ):
@@ -49,6 +56,8 @@ class HuggingFaceModel(Model):
             system_message=system_message,
             *args, **kwargs
         )
+
+        self.use_vllm = use_vllm
 
         if load_args is None:
             self.load_args = {}
@@ -69,18 +78,31 @@ class HuggingFaceModel(Model):
             self.generation_args = generation_args
         print("Generation args:", self.generation_args)
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id,
-            **self.tokenizer_load_args,
-            cache_dir=hf_cache_dir,
-        )
         start_time = time.time()
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_id,
-            **self.load_args,
-            cache_dir=hf_cache_dir
-        ).eval()
+
+        if self.use_vllm:
+            self.model = LLM(model=self.model_id, **self.load_args, seed=np.random.randint(0, 1e9))
+            self.tokenizer = self.model.get_tokenizer()
+
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_id,
+                **self.tokenizer_load_args,
+                cache_dir=hf_cache_dir,
+            )
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_id,
+                **self.load_args,
+                cache_dir=hf_cache_dir
+            ).eval()
+
         end_time = time.time()
+
+        # set the max context length
+        if hasattr(self.model.config, "model_max_length"):
+            self.max_context_length = self.model.config.model_max_length
+        else:
+            self.max_context_length = self.model.config.max_position_embeddings
 
         if self.verbose:
             print("Model loading time: {}h {}m {}s".format(*secs_2_hms(end_time-start_time)))
@@ -125,6 +147,7 @@ class HuggingFaceModel(Model):
         system_label="CONTEXT",
         *args, **kwargs
     ):
+        messages = messages[:]
 
         if self.base_model_template:
             if assistant_label is None:
@@ -143,20 +166,44 @@ class HuggingFaceModel(Model):
 
         formatted_prompt += query_string
 
-        inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)
+        if self.verbose:
+            print(f">>> {self.__class__}.predict")
+            if self.base_model_template:
+                print(f"************************FORMATTED PROMPT*********************\n{formatted_prompt}\n******************")
+            else:
+                print_chat_messages(messages+[{"role": "assistant", "content": query_string}])
 
-        # token match
-        output = self.model.generate(
-            **inputs,
-            max_new_tokens=1,
-            return_dict_in_generate=True,
-            output_scores=True
-        )
+        if self.use_vllm:
+            outputs = self.model.generate([formatted_prompt], SamplingParams(max_tokens=1, logprobs=5))
 
-        _, generation, lprobs = self.parse_hf_outputs(output=output, answers=answers)
+            tok_lprobs = outputs[0].outputs[0].logprobs[0]
+            tok_2_lprobs = {tok_lprob.decoded_token: tok_lprob.logprob for tok_lprob in tok_lprobs.values()}
+
+            generation = max(tok_2_lprobs, key=tok_2_lprobs.get)
+            lprobs = [tok_2_lprobs.get(a, -100) for a in answers]
+
+            if lprobs == [-100]*len(answers):
+                raise ValueError("No answer was given. vLLM allows only top 5 logprobs, you need to use the transformers library (use_vllm=False) with this model")
+
+        else:
+            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)
+
+            assert inputs['input_ids'].numel() <= self.max_context_length
+
+            # token match
+            output = self.model.generate(
+                **inputs,
+                max_new_tokens=1,
+                return_dict_in_generate=True,
+                output_scores=True
+            )
+
+            _, generation, lprobs = self.parse_hf_outputs(output=output, answers=answers)
+
 
         if self.verbose:
-            print(f"************************\nFORMATTED PROMPT:\n{formatted_prompt}\n->{generation}\n******************")
+            print(f"-(generation)->{generation}")
+
         return generation, lprobs
 
     def generate(
@@ -168,7 +215,15 @@ class HuggingFaceModel(Model):
             system_label=False,
             stop_words_up=None
     ):
+        messages = messages[:]
+
+        if self.verbose:
+            print(f">>> {self.__class__}.generate")
+
         if self.base_model_template:
+            if self.use_vllm:
+                raise NotImplementedError("VLLM not implemented for base models")
+
             if not self.system_message:
                 raise ValueError("system_message must be used with base model template")
 
@@ -193,18 +248,29 @@ class HuggingFaceModel(Model):
                 return_stop_words=True
             )
             input_ids = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device).input_ids
+
+            assert input_ids.numel() <= self.max_context_length
+
             assert all([w.upper() in stop_words_up for w in stop_words])
             stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stop_words_up, self.tokenizer, input_ids)])
 
             if self.verbose:
-                print(f"\n>>>>>>>>>>>>FORMATTED<<<>>>PROMPT<<<<<<<<<<<<\n{formatted_prompt}")
+                print(f"************************FORMATTED PROMPT********************\n{formatted_prompt}\n******************")
 
         else:
-            input_ids = self.tokenizer.apply_chat_template(
-                messages,
-                return_tensors="pt",
-                add_generation_prompt=True
-            ).to(self.model.device)
+            if self.use_vllm:
+                formatted_messages = self.tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+
+            else:
+                input_ids = self.tokenizer.apply_chat_template(
+                    messages,
+                    return_tensors="pt",
+                    add_generation_prompt=True
+                ).to(self.model.device)
 
             if self.verbose:
                 print_chat_messages(messages)
@@ -216,17 +282,28 @@ class HuggingFaceModel(Model):
         else:
             generation_args = self.generation_args
 
-        output_seq = self.model.generate(
-            input_ids=input_ids,
-            **generation_args,
-            return_dict_in_generate=True,
-            output_scores=True,
-            stopping_criteria=stopping_criteria
-        )
+        if self.use_vllm:
+            outputs = self.model.generate(
+                [formatted_messages],
+                SamplingParams(**generation_args)
+            )
+            response = outputs[0].outputs[0].text
 
-        response = self.tokenizer.decode(output_seq.sequences[0][len(input_ids[0]):], skip_special_tokens=True)
+        else:
+            assert input_ids.numel() <= self.max_context_length
+            output_seq = self.model.generate(
+                input_ids=input_ids,
+                **generation_args,
+                return_dict_in_generate=True,
+                output_scores=True,
+                stopping_criteria=stopping_criteria
+            )
+
+            response = self.tokenizer.decode(output_seq.sequences[0][len(input_ids[0]):], skip_special_tokens=True)
+
         if self.verbose:
-            print(f"->{response}")
+            print(f"-(generation)->{response}")
+
         return response
 
 
@@ -235,10 +312,16 @@ class LLama3Model(HuggingFaceModel):
     def __init__(self, *args, **kwargs):
         super(LLama3Model, self).__init__(*args, **kwargs)
 
-        self.generation_args["eos_token_id"] = [
-            self.tokenizer.eos_token_id,
-            self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
-        ]
+        if self.use_vllm:
+            self.generation_args["stop_token_ids"] = [
+                self.tokenizer.eos_token_id,
+                self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
+            ]
+        else:
+            self.generation_args["eos_token_id"] = [
+                self.tokenizer.eos_token_id,
+                self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
+            ]
 
 
 from mistral_common.tokens.instruct.normalize import ChatCompletionRequest
@@ -257,6 +340,7 @@ def to_mistral_msg(msg):
 class Mixtral8x22BModel(HuggingFaceModel):
 
     def generate(self, messages, *args, **kwargs):
+
         if not self.base_model_template:
             mistral_query = ChatCompletionRequest(messages=list(map(to_mistral_msg, messages)), model="test")
             messages = mistral_query.model_dump()['messages']

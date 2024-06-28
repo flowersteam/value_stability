@@ -26,6 +26,7 @@ class InteractiveModel(Model):
         system_label="CONTEXT",
         *args, **kwargs
     ):
+        messages = messages[:]
         if label_2_text_option_dict is None:
             raise ValueError("label_2_text_option_dict must be provided")
 

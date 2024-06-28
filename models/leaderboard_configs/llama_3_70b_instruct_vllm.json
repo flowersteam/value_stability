@@ -1,0 +1,19 @@
+{
+  "model_class": "LLama3Model",
+  "model_id": "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface/models--meta-llama--Meta-Llama-3-70B-Instruct/snapshots/e8cf5276ae3e97cfde8a058e64a636f2cde47820",
+  "system_message": true,
+  "base_model_template": false,
+  "use_vllm": true,
+  "load_args": {
+    "trust_remote_code": true,
+    "load_format": "pt",
+    "dtype": "float16",
+    "tensor_parallel_size": 2
+  },
+  "tokenizer_load_args": {},
+  "generation_args": {
+    "eos_token_id": "defined in LLama3Model",
+    "max_tokens": 100,
+    "temperature": 0.7
+  }
+}

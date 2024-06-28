@@ -1,17 +1,18 @@
 import argparse
 import random
+import warnings
 from collections import defaultdict
-from pathlib import Path
-import json
 import hashlib
-import time
 import datetime
 import itertools
 import string
+import copy
 
-from termcolor import colored
+from termcolor import colored, cprint
 
 from utils import *
+from svs_utils import *
+from simulate_conversation_utils import *
 
 from models import *
 
@@ -21,7 +22,7 @@ import torch
 import tiktoken
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, BitsAndBytesConfig
-from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
+# from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training # for Qwen?
 
 from personas.utils import simulated_participant_to_name
 
@@ -30,197 +31,45 @@ hf_cache_dir = get_hf_cache_dir()
 os.environ['HF_HOME'] = hf_cache_dir
 
 
-# take the theme starter
-opening_questions_for_themes = {
-    "poem": "Hello, let's write a poem together. You start by the first verse I'll add the second one, and so on.",
-    "joke": "Tell me a joke.",
-    "history": "What is the significance of the battle of Hastings. Answer in two sentences.",
-    "chess": "1. e4",
-    "grammar": "Can you check this sentence for grammar? \n Whilst Jane was waiting to meet hers friend their nose started bleeding.",
-}
-
-
 def create_permutation_dicts(args, n_options, choices, num_questions, population_size=None):
 
-    if args.permute_options:
 
-        # sample permutations based on given seed -> should correspond to different contexts
-        original_state = random.getstate()  # save the original state
-        random.seed(args.permute_options_seed)
+    # sample permutations based on given seed -> should correspond to different contexts
+    original_state = random.getstate()  # save the original state
+    random.seed(args.permute_options_seed)
 
-        if len(set(n_options)) == 1:
+    if len(set(n_options)) == 1:
 
-            if n_options[0] > 9:
-                raise ValueError("Number of options too big. Refactor code below to use it.")
+        if n_options[0] > 9:
+            raise ValueError("Number of options too big. Refactor code below to use it.")
 
-            all_permutations = list(itertools.permutations(range(n_options[0])))
+        all_permutations = list(itertools.permutations(range(n_options[0])))
 
-            permutations = random.choices(all_permutations, k=num_questions*population_size)
-            permutations = [permutations[part_i:part_i+num_questions] for part_i in range(population_size)]
+        permutations = random.choices(all_permutations, k=num_questions*population_size)
+        permutations = [permutations[part_i:part_i+num_questions] for part_i in range(population_size)]
 
-        else:
-            # not all questions have the same number of options
+    else:
+        # not all questions have the same number of options
 
-            # string seed to int seed
-            int_seed = int(hashlib.md5(args.permute_options_seed.encode('utf-8')).hexdigest(), 16)
-            rng = np.random.default_rng(seed=int_seed)
+        # string seed to int seed
+        int_seed = int(hashlib.md5(args.permute_options_seed.encode('utf-8')).hexdigest(), 16)
+        rng = np.random.default_rng(seed=int_seed)
 
-            permutations = [
-                [tuple(rng.permutation(n_options_q)) for n_options_q in n_options] for _ in range(population_size)
-            ]
-
-        permutations_dicts = [
-            [
-                dict(zip(choices, perm)) for perm in part_perms
-            ] for part_perms in permutations
+        permutations = [
+            [tuple(rng.permutation(n_options_q)) for n_options_q in n_options] for _ in range(population_size)
         ]
 
-        # revert original state
-        random.setstate(original_state)
+    permutations_dicts = [
+        [
+            dict(zip(choices, perm)) for perm in part_perms
+        ] for part_perms in permutations
+    ]
 
-    else:
-        if len(set(n_options)) == 1:
-            permutations_dicts = [
-                [{choices[i]: i for i, c in enumerate(choices[:n_opt])} for n_opt in n_options]
-            ] * population_size
+    # revert original state
+    random.setstate(original_state)
+
 
     return permutations_dicts
-
-
-def create_simulated_messages(conv, last="user"):
-    # simulate a conversation between two LLMs
-    if last == "user":
-        # last role is user
-        sim_conv = list(zip(["user", "assistant"] * (len(conv) // 2 + 1), conv[::-1]))[::-1]
-    elif last == "assistant":
-        # last role is assistant
-        sim_conv = list(zip(["assistant", "user"] * (len(conv) // 2 + 1), conv[::-1]))[::-1]
-    else:
-        raise ValueError("last must be either user or assistant")
-
-    sim_conv_messages = [{"role": role, "content": msg} for role, msg in sim_conv]
-
-    return sim_conv_messages
-
-
-class StoppingCriteriaSub(StoppingCriteria):
-    def __init__(self, stops, tokenizer, original_input_ids):
-        super().__init__()
-        self.stops = [s.upper() for s in stops]
-        self.tokenizer = tokenizer
-        self.original_input_ids = original_input_ids
-
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs):
-        generated_ids = input_ids[0][len(self.original_input_ids[0]):]
-        generation = self.tokenizer.decode(generated_ids).upper()
-        return any([stop in generation for stop in self.stops])
-
-
-def simulate_conversation(args, opening_question, model_set_persona_string=None, llm_generator=None, simulated_participant=None):
-
-    conversation = [opening_question]
-
-    # simulate conversation
-    assert args.simulated_conversation_n_messages % 2 == 1  # must be odd so that the last one is GPT as simulated persona
-
-    for msg_i in range(args.simulated_conversation_n_messages):
-        if args.verbose:
-            print(f"Simulated conv msg {msg_i}")
-
-        # assign roles to messages - alternating, last one user
-        simulated_conv_messages = create_simulated_messages(conversation, last="user")
-        simulated_participant_name = simulated_participant_to_name(simulated_participant, args.simulated_population_type)
-        labels_dict = {
-            "persona": {
-                "assistant_label": simulated_participant_name.upper(),
-                "user_label": "USER",
-                "system_label": "CONTEXT"
-            },
-            "human": {
-                "assistant_label": "HUMAN",
-                "user_label": f"{simulated_participant_name.upper()} (CHATBOT)" if args.simulated_human_knows_persona else "CHATBOT",
-                "system_label": "CONTEXT"
-            }
-        }
-        stop_words_up = [f"\n{v}:" for v in labels_dict["persona"].values()] + [f"\n{v}:" for v in labels_dict["human"].values()]
-        # also add similar words wo whitespace ex. GANDALF (CHATBOT) and GANDALF(CHATBOT)
-        stop_words_up += [s.replace(" ", "") for s in stop_words_up if " " in s]
-
-        if msg_i % 2 == 0:
-            # even -> gpt as a persona
-            assert simulated_conv_messages[0]['role'] == "user"
-
-            if model_set_persona_string:
-                simulated_conv_messages = [{
-                    "role": "system" if llm_generator.system_message else "user",
-                    "content": model_set_persona_string
-                }] + simulated_conv_messages
-
-            assistant_label = labels_dict["persona"]["assistant_label"]
-            user_label = labels_dict["persona"]["user_label"]
-            system_label = labels_dict["persona"]["system_label"]
-
-        else:
-            # gpt as human
-            assert simulated_conv_messages[0]['role'] == "assistant"
-
-            if llm_generator.base_model_template:
-                if args.simulated_human_knows_persona:
-                    sys_msg = f"The following is a conversation between a human and a chatbot. The chatbot is pretending to be {simulated_participant_name}. The human's every reply must be in one sentence only."
-                else:
-                    sys_msg = f"The following is a conversation between a human and a chatbot. The human's every reply must be in one sentence only."
-            else:
-                if args.simulated_human_knows_persona:
-                    sys_msg = f"You are simulating a human using a chatbot. The chatbot is pretending to be {simulated_participant_name}. Your every reply must be in one sentence only."
-                else:
-                    sys_msg = f"You are simulating a human using a chatbot. Your every reply must be in one sentence only."
-
-            simulated_conv_messages = [{
-                "role": "system" if llm_generator.system_message else "user",
-                "content": sys_msg
-            }] + simulated_conv_messages
-
-            assistant_label = labels_dict["human"]["assistant_label"]
-            user_label = labels_dict["human"]["user_label"]
-            system_label = labels_dict["human"]["system_label"]
-
-        if not llm_generator.base_model_template:
-            simulated_conv_messages = fix_alternating_msg_order(simulated_conv_messages)
-
-        response = llm_generator.generate(
-            messages=simulated_conv_messages,
-            assistant_label=assistant_label,
-            user_label=user_label,
-            system_label=system_label,
-            stop_words_up=stop_words_up
-        )
-
-        if args.verbose:
-            print_chat_messages(simulated_conv_messages)
-
-        if llm_generator.base_model_template:
-            response_up = response.upper()
-            stop_word_ind = np.min([response_up.index(sw) if sw in response_up else np.inf for sw in stop_words_up])
-            if stop_word_ind != np.inf:
-                stop_word_ind = int(stop_word_ind)
-                response = response[:stop_word_ind]
-
-        conversation.append(response)
-
-        if args.verbose:
-            print(f"--> {response}")
-
-        messages_conv = create_simulated_messages(conversation, last="assistant")
-        messages_conv_hash = hash_chat_conv(messages_conv)
-
-    return messages_conv, messages_conv_hash
-
-
-def map_choice_to_number(letter, permutations_dict):
-    # A-F -> 1-6
-    # find index of letter in choices and add 1
-    number = permutations_dict[letter] + 1
-    return number
 
 
 def map_number_to_choice(number, inv_permutations_dict):
@@ -237,33 +86,33 @@ hidden_token = hf_token[:6] + "*" * (len(hf_token)-12) + hf_token[-6:]
 print("HF TOKEN:", hidden_token)
 
 
-# choices = ["A", "B", "C", "D", "E", "F"]
-choices = list(string.ascii_uppercase)
+choices = list(string.ascii_uppercase) + list(string.ascii_lowercase)
 
 llama_dir = "/gpfswork/rech/imi/utu57ed/llama/llama_files/"
 
 
-def get_prompt_skeleton(experiment_name, args, simulated_participant, base_model_template):
+def get_prompt_skeleton(experiment_name, args, simulated_participant_description, base_model_template):
 
     if "pvq" in experiment_name:
         assert "pvq" in args.data_dir
         questionnaire_description = "Here we briefly describe some people. Please read each description and think about how much each person is or is not like you. Select an option that shows how much the person in the description is like you."
-        questionnaire_description_empty = False
+
+    elif "svs" in experiment_name:
+        assert "svs" in args.data_dir
+        with open('data/data_svs/raw/description.txt', 'r') as file:
+            questionnaire_description = file.read().rstrip()
 
     elif "donation" in experiment_name:
         assert "donation" in args.data_dir
         questionnaire_description = ""
-        questionnaire_description_empty = True
 
     elif "bag" in experiment_name:
         assert "bag" in args.data_dir
         questionnaire_description = ""
-        questionnaire_description_empty = True
 
     elif "religion" in experiment_name:
         assert "religion" in args.data_dir
         questionnaire_description = ""
-        questionnaire_description_empty = True
 
     else:
         raise ValueError(f"Experiment name is ill-defined {args.experiment_name}")
@@ -273,21 +122,15 @@ def get_prompt_skeleton(experiment_name, args, simulated_participant, base_model
     else:
         prefix = "You are"
 
-    if args.simulated_population_type in ["famous_people"]:
-        set_persona_str = f"{prefix} {simulated_participant}"
-    elif args.simulated_population_type in ["tolkien_characters"]:
-        set_persona_str = f"{prefix} {simulated_participant} from J. R. R. Tolkien's Middle-earth legendarium."
-    elif args.simulated_population_type == "permutations":
+    if args.simulated_population_config == "permutations":
         set_persona_str = ""
     else:
-        raise ValueError("Unknown population type")
+        set_persona_str = f"{prefix} {simulated_participant_description}"
 
     if args.query_prompt:
         query_str = args.query_prompt
     else:
         query_str = "Answer: ("
-
-    assert (not questionnaire_description_empty == questionnaire_description)
 
     prompt_skeleton = {
         "set_persona_str": set_persona_str,  # remove newline from the end
@@ -297,7 +140,8 @@ def get_prompt_skeleton(experiment_name, args, simulated_participant, base_model
 
     return prompt_skeleton
 
-def format_example(df, idx, experiment_name, args, permutations_dict, simulated_participant, base_model_template=None):
+
+def format_example(df, idx, experiment_name, args, permutations_dict, simulated_participant_description, base_model_template=None):
     # an item contains a question and suggested answers
     item_str = df.iloc[idx, 0]
     k = df.shape[1] - 2
@@ -315,13 +159,21 @@ def format_example(df, idx, experiment_name, args, permutations_dict, simulated_
 
         num_options += 1
 
+    item_str_ = item_str
+    choices_prefixes = choices[:num_options]
+    item_str_ += create_choices_str(choices_prefixes, [options_strings[permutations_dict[ch]] for ch in choices_prefixes])
+
     for ch in choices[:num_options]:
         item_str += "\n({}) {}".format(ch, options_strings[permutations_dict[ch]])
+
+    # testing, remove the manual thing later (keep the function)
+    assert item_str == item_str_
+
 
     prompt = get_prompt_skeleton(
         experiment_name=experiment_name,
         args=args,
-        simulated_participant=simulated_participant,
+        simulated_participant_description=simulated_participant_description,
         base_model_template=base_model_template
     )
 
@@ -330,36 +182,23 @@ def format_example(df, idx, experiment_name, args, permutations_dict, simulated_
     return prompt, num_options
 
 
-def hash_chat_conv(msgs_conv):
-    json_string = json.dumps(msgs_conv)
 
-    # Create a SHA256 hash of the string
-    hash_object = hashlib.sha256(json_string.encode())
-
-    # Get the hexadecimal representation of the hash
-    hex_dig = hash_object.hexdigest()
-
-    return hex_dig
-
-
-def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simulated_participant=None, simulated_conversation_theme=None):
-    cors = []
-    all_probs = []
-    all_lprobs = []
-    all_answers = []
-    all_generations = []
-    all_scores = []
+def eval(args, test_df, participant_perm_dicts, llm_generator=None, simulated_participant=None, opening_question=None, interlocutor="human"):
+    cors = [None] * test_df.shape[0]
+    all_probs = [None] * test_df.shape[0]
+    all_lprobs = [None] * test_df.shape[0]
+    all_answers = [None] * test_df.shape[0]
+    all_generations = [None] * test_df.shape[0]
+    all_scores = [None] * test_df.shape[0]
 
     # hashing for simulated conversations
     messages_conv = None
-    messages_conv_hash = None
 
     gpt_token_counter = {"input": 0, "output": 0}
 
     assert test_df.shape[0] == len(participant_perm_dicts)
 
     for item_i, permutations_dict in enumerate(participant_perm_dicts):
-        inv_permutations_dict = {v: k for k, v in permutations_dict.items()}
 
         if item_i % 20 == 0:
             print(f"Eval progress: {item_i}/{test_df.shape[0]}")
@@ -373,7 +212,7 @@ def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simu
             experiment_name=args.experiment_name,
             args=args,
             permutations_dict=permutations_dict,
-            simulated_participant=simulated_participant,
+            simulated_participant_description=simulated_participant["description"],
             base_model_template=llm_generator.base_model_template
         )
 
@@ -390,19 +229,21 @@ def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simu
         else:
             gpt_tokenizer = None
 
-        if simulated_conversation_theme:
+        if opening_question:
 
             set_persona_str = prompt["set_persona_str"]
             if messages_conv is None:
+                assert item_i == 0
                 if args.verbose:
                     print("SIMULATING CONVERSATION")
 
-                messages_conv, messages_conv_hash = simulate_conversation(
+                messages_conv = simulate_conversation(
                     args=args,
-                    opening_question=opening_questions_for_themes[simulated_conversation_theme],
+                    opening_question=opening_question,
                     model_set_persona_string=set_persona_str,
                     simulated_participant=simulated_participant,
                     llm_generator=llm_generator,
+                    interlocutor=interlocutor,
                 )
 
                 if args.estimate_gpt_tokens:
@@ -418,67 +259,156 @@ def eval(args, engine, test_df, participant_perm_dicts, llm_generator=None, simu
                         current_input_tokens += current_output_tokens
 
             else:
+                assert item_i != 0
                 if args.verbose:
                     print("LOADING CACHED CONVERSATION")
-                assert hash_chat_conv(messages_conv) == messages_conv_hash
 
         if args.estimate_gpt_tokens:
             # gpt params
             messages = construct_messages(
                 prompt=prompt,
                 system_message=True,
-                messages_conv=messages_conv if simulated_conversation_theme else None,
+                messages_conv=messages_conv
             )
             n_input_tokens = sum([len(gpt_tokenizer.encode(msg['content'])) for msg in messages])
 
             gpt_token_counter['input'] += n_input_tokens
             gpt_token_counter['output'] += 1
 
-        messages = construct_messages(
-            prompt=prompt,
-            system_message=llm_generator.system_message,
-            messages_conv=messages_conv if simulated_conversation_theme else None,
-        )
+        assert bool(messages_conv is None) == bool(opening_question is None)
 
-        if args.verbose:
-            print_chat_messages(messages)
+        if "data_svs" in args.data_dir:
+            assert "svs" in args.experiment_name
 
-        generation, lprobs = llm_generator.predict(
-            messages=messages,
-            answers=answers,
-            label_2_text_option_dict=label_2_text_option_dict,
-            query_string=prompt['query_str'],
-            assistant_label=simulated_participant_to_name(simulated_participant, args.simulated_population_type).upper()
-        )
+            # Select and rate the extreme values for both groups
+            if item_i in svs_groups_start_indices:  # start indices are : 0, 30
+                first_non_extreme_value = True
 
-        probs = softmax(np.array(lprobs))
-        pred = {i: c for i, c in enumerate(answers)}[np.argmax(lprobs)]
-        cor = pred == label
-        score = map_choice_to_number(pred, permutations_dict)
+                group_id = first_index_to_svs_group[item_i]
+                group_values = get_values_for_group(group_id)
 
-        if args.verbose:
-            print(colored(f"Pred:{pred} (Generation:{generation}; Score: {score})", "green"))
-            print("------------------")
+                if group_id == 1:
+                    assert group_values == list(test_df.iloc[:svs_group_to_size[group_id], 0])
+                elif group_id == 2:
+                    assert group_values == list(test_df.iloc[-svs_group_to_size[group_id]:, 0])
 
-        cors.append(cor)
-        all_lprobs.append(lprobs)
-        all_probs.append(probs)
-        all_answers.append(pred)
-        all_generations.append(generation)
-        all_scores.append(score)
+                # choose and rate the most and least important values (extreme values)
+                group_values_to_choose_from = copy.copy(group_values)
+                running_messages = messages_conv
+
+                for extreme_value_str in ["most", "least"]:
+
+                    # 1. Choose the extreme values (most or least important)
+                    #################################################################
+                    chosen_value, item_i_in_group, running_messages = choose_extreme_value(
+                        group_id=group_id,
+                        group_values=group_values,
+                        extreme_value_str=extreme_value_str,
+                        create_choices_str=create_choices_str,
+                        choices=choices,
+                        group_values_to_choose_from=group_values_to_choose_from,
+                        prompt=prompt,
+                        construct_messages=construct_messages,
+                        llm_generator=llm_generator,
+                        previous_messages=running_messages,
+                        label_2_text_option_dict=label_2_text_option_dict,
+                        simulated_participant=simulated_participant,
+                    )
+
+                    chosen_item_i = item_i_in_group + item_i
+                    assert chosen_item_i == list(test_df.iloc[:, 0]).index(chosen_value)
+
+                    if extreme_value_str == "most":
+                        # when choosing the least important value, the most important value should among the options
+                        group_values_to_choose_from.remove(chosen_value)
+
+                    # 2. Score the extreme values
+                    cor, lprobs, probs, pred, generation, score, running_messages = score_extreme_value(
+                        format_example=format_example,
+                        test_df=test_df,
+                        chosen_item_i=chosen_item_i,
+                        args=args,
+                        participant_perm_dicts=participant_perm_dicts,
+                        simulated_participant=simulated_participant,
+                        llm_generator=llm_generator,
+                        construct_messages=construct_messages,
+                        previous_messages=running_messages,
+                        answers=answers,
+                        label_2_text_option_dict=label_2_text_option_dict,
+                        prompt=prompt,
+                        chosen_value=chosen_value,
+                    )
+
+                    cors[chosen_item_i] = cor
+                    all_lprobs[chosen_item_i] = lprobs
+                    all_probs[chosen_item_i] = probs
+                    all_answers[chosen_item_i] = pred
+                    all_generations[chosen_item_i] = generation
+                    all_scores[chosen_item_i] = score
+
+
+            # Rate the Non-extreme values (it was not already rated)
+            if all_scores[item_i] is None:
+                cor, lprobs, probs, pred, generation, score, running_messages = score_non_extreme_value_svs(
+                    test_df=test_df, item_i=item_i, args=args,
+                    previous_messages=running_messages,
+                    first_non_extreme_value=first_non_extreme_value,
+                    llm_generator=llm_generator,
+                    permutations_dict=permutations_dict,
+                    format_example=format_example, construct_messages=construct_messages,
+                    label_2_text_option_dict=label_2_text_option_dict,
+                    answers=answers,
+                    simulated_participant=simulated_participant,
+                )
+                first_non_extreme_value = False
+
+                cors[item_i] = cor
+                all_lprobs[item_i] = lprobs
+                all_probs[item_i] = probs
+                all_answers[item_i] = pred
+                all_generations[item_i] = generation
+                all_scores[item_i] = score
+
+        else:
+            messages = construct_messages(
+                prompt=prompt,
+                system_message=llm_generator.system_message,
+                messages_conv=messages_conv
+            )
+
+            generation, lprobs = llm_generator.predict(
+                messages=messages,
+                answers=answers,
+                label_2_text_option_dict=label_2_text_option_dict,
+                query_string=prompt['query_str'],
+                assistant_label=simulated_participant["name"].upper()
+            )
+
+            probs = softmax(np.array(lprobs))
+            pred = {i: c for i, c in enumerate(answers)}[np.argmax(lprobs)]
+            cor = pred == label
+            score = map_choice_to_number(pred, permutations_dict)
+
+            if args.verbose:
+                print(colored(f"Pred:{pred} (Generation:{generation}; Score: {score})", "green"))
+                print("------------------")
+
+            cors[item_i] = cor
+            all_lprobs[item_i] = lprobs
+            all_probs[item_i] = probs
+            all_answers[item_i] = pred
+            all_generations[item_i] = generation
+            all_scores[item_i] = score
 
     cors = np.array(cors)
     all_scores = np.array(all_scores)
-
-    if args.estimate_gpt_tokens:
-        estimate_and_print_gpt_prices(gpt_token_counter, engine)
 
     return cors, all_probs, all_lprobs, all_answers, all_scores, all_generations, gpt_token_counter
 
 
 def main(args):
-    engine = args.engine
-    print("Engine:", engine)
+    model_config_path = args.model_config_path
+    print("Model:", model_config_path)
 
     subjects = sorted([f.split("_test.csv")[0] for f in os.listdir(os.path.join(args.data_dir, "test")) if "_test.csv" in f])
 
@@ -487,9 +417,9 @@ def main(args):
     dump_results_dir = dump_results_dir.with_name(dump_results_dir.name+f"_{timestamp}")
 
     if not args.overwrite:
-        prev_jsons = list(dump_results_dir.parent.glob(dump_results_dir.name.rstrip(timestamp)+"*/results.json"))
+        prev_jsons = list(dump_results_dir.parent.glob(dump_results_dir.name.replace(timestamp, "")+"*/results.json"))
         if len(prev_jsons) > 0:
-            raise RuntimeError(f"Previous version of this run were found: {prev_jsons}")
+            raise RuntimeError(f"Previous version of this run ({dump_results_dir}) were found: {prev_jsons}")
 
     else:
         old_jsons = list(Path(dump_results_dir).parent.glob(f"*{args.permute_options_seed}*{args.simulated_conversation_theme}*/results.json"))
@@ -508,8 +438,6 @@ def main(args):
 
     if "data_pvq" in args.data_dir:
         assert "pvq" in args.experiment_name
-
-        # assert set(subjects_to_evaluate).issubset(subjects)
         subjects = ["pvq_auto"]
 
     print("Args:", args)
@@ -517,13 +445,10 @@ def main(args):
 
     gpt_tokens_total = {"input": 0, "output": 0}
 
-    llm_generator = create_model(
-        engine,
-        additional_model_args={"use_azure": args.azure_openai}
-    )
-
     if "pvq" in args.data_dir:
         max_n_options = 6
+    elif "svs" in args.data_dir:
+        max_n_options = 9
     elif "donation" in args.data_dir:
         max_n_options = 6
     elif "bag" in args.data_dir:
@@ -533,27 +458,21 @@ def main(args):
     else:
         raise ValueError(f"Undefined number of options for data in {args.data_dir}.")
 
-    if args.simulated_population_type == "permutations":
-        simulated_population = [None]*args.permutations
+    if Path(args.simulated_population_config).is_file():
+        with open(args.simulated_population_config, 'r') as f:
+            simulated_population = json.load(f)
+
+    elif args.simulated_population_config == "permutations":
         simulated_population_genders = (["M", "F"]*int(np.ceil(args.permutations/2)))[:args.permutations]
+        simulated_population = [{
+            "name": "CHATBOT",
+            "description": None,
+            "gender": g
+        } for g in simulated_population_genders]
+    else:
+        raise ValueError(f"Undefined population {args.simulated_population_config} - give path to a config file.")
 
-    elif args.simulated_population_type == "tolkien_characters":
-        # https://en.wikipedia.org/wiki/List_of_Middle-earth_characters
-        # 50 characters with the longest wikipedia page
-        with open("personas/tolkien_characters/tolkien_characters.txt") as f:
-            simulated_population = [name.rstrip() for name in f.readlines()]
-
-        with open("personas/tolkien_characters/tolkien_characters_genders.txt") as f:
-            simulated_population_genders = [g.rstrip() for g in f.readlines()]
-
-    elif args.simulated_population_type == "famous_people":
-        # source: https://www.biographyonline.net/people/famous-100.html
-        with open("personas/famous_people/famous_people.txt") as f:
-            simulated_population = [name.rstrip() for name in f.readlines()]
-
-        with open("personas/famous_people/famous_people_genders.txt") as f:
-            simulated_population_genders = [g.rstrip() for g in f.readlines()]
-
+    llm_generator = create_model(model_config_path)
     all_cors = []
 
     # list because of permutations
@@ -567,9 +486,6 @@ def main(args):
     for subject in subjects:
 
         if subject == "pvq_auto":
-            if not simulated_population_genders:
-                raise ValueError("Simulated population genders is not defined.")
-
             test_df_dict = {}
             test_df_dict["F"] = pd.read_csv(
                 os.path.join(args.data_dir, args.eval_set, f"pvq_female_{args.eval_set}.csv"),
@@ -618,9 +534,17 @@ def main(args):
         assert len(permutations_dicts) == len(simulated_population)
         assert all([len(part_d) == num_questions for part_d in permutations_dicts])
 
+        # Get the topic conversation starter
+        opening_questions, per_participant_contexts = get_opening_question_for_theme(
+            conversation_theme=args.simulated_conversation_theme
+        )
+
+        interlocutors, per_participant_interlocutors = get_interlocutors(interlocutors=args.interlocutors)
+
         pop_start_time = time.time()
+
         # evaluate over population
-        for sim_part_i, (simulated_participant, simulated_participant_gender, participant_perm_dicts) in enumerate(zip(simulated_population, simulated_population_genders, permutations_dicts)):
+        for sim_part_i, (simulated_participant, participant_perm_dicts) in enumerate(zip(simulated_population, permutations_dicts)):
 
             if sim_part_i > 0:
                 eta = estimate_eta(start_time=pop_start_time, progress=sim_part_i/len(simulated_population))
@@ -632,17 +556,21 @@ def main(args):
             print(f"Simulated participant {sim_part_i}/{len(simulated_population)} {eta_str}")
 
             if subject == "pvq_auto":
-                test_df = test_df_dict[simulated_participant_gender]
+                test_df = test_df_dict[simulated_participant['gender']]
 
             cors, eval_probs, eval_lprobs, preds, preds_values, gens, gpt_tokens = eval(
                 args=args,
-                engine=engine,
                 test_df=test_df,
                 participant_perm_dicts=participant_perm_dicts,
                 llm_generator=llm_generator,
                 simulated_participant=simulated_participant,
-                simulated_conversation_theme=args.simulated_conversation_theme,
+                opening_question=opening_questions[sim_part_i] if per_participant_contexts else opening_questions,
+                interlocutor=interlocutors[sim_part_i] if per_participant_interlocutors else interlocutors
             )
+
+            if args.estimate_gpt_tokens:
+                estimate_and_print_gpt_prices(gpt_tokens, args.engine)
+
             all_cors.append(cors)
             gpt_tokens_total['input'] += gpt_tokens['input']
             gpt_tokens_total['output'] += gpt_tokens['output']
@@ -652,8 +580,8 @@ def main(args):
             answers[sim_part_i][subject] = list(zip(preds, map(int, preds_values)))
             generations[sim_part_i][subject] = gens
 
-            if "pvq" in args.data_dir:
-                assert "pvq" in args.experiment_name
+            if "pvq" in args.data_dir or "svs" in args.data_dir:
+                assert "pvq" in args.experiment_name or "svs" in args.experiment_name
 
                 profile_values_idx_json = os.path.join(os.path.join(args.data_dir, "raw"), "values.json")
 
@@ -665,7 +593,7 @@ def main(args):
                 metrics[sim_part_i][subject] = {}
 
                 for profile_value, idxs in profile_values_idx.items():
-                    metrics[sim_part_i][subject][profile_value] = preds_values[idxs].mean() # legacy: todo: remove and save those below
+                    metrics[sim_part_i][subject][profile_value] = preds_values[idxs].mean()
 
             elif "tolkien_donation" in args.data_dir:
                 assert "donation" in args.experiment_name
@@ -699,7 +627,7 @@ def main(args):
                 }
 
             else:
-                raise NotImplementedError("Evaluation not implemented")
+                raise NotImplementedError(f"Evaluation not implemented for {args.data_dir}")
 
         # assert the same and take the fist
         assert all(subj_len[0] == s for s in subj_len)
@@ -755,7 +683,7 @@ def main(args):
             print("pop metrics:", pop_metrics['all']['hist'])
 
     if args.estimate_gpt_tokens:
-        estimate_and_print_gpt_prices(gpt_tokens_total, engine)
+        estimate_and_print_gpt_prices(gpt_tokens_total, args.engine)
 
 
 if __name__ == "__main__":
@@ -766,6 +694,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_name", "-n", type=str, default="")
     parser.add_argument("--pvq-version", type=str, default="pvq_auto", choices=["pvq_auto"])
     parser.add_argument("--engine", "-e", type=str, default="dummy")
+    parser.add_argument("--model-config-path", type=str, default=None)
     parser.add_argument("--format", type=str, default="chat", choices=["chat"])
     parser.add_argument('--profile', type=str, help='Profile definition in format "k:v;k:v;k:v", ex. "age:35;interests:reading books"')
     parser.add_argument("--query-prompt", "-qp", type=str, help="Use Answer(as ONE letter): where applicable.")
@@ -773,15 +702,12 @@ if __name__ == "__main__":
     parser.add_argument("--assert-params", action="store_true")
     parser.add_argument("--estimate-gpt-tokens", "-t", action="store_true")
     parser.add_argument("--eval-set", type=str, default="test", choices=["test", "val"])
-    # parser.add_argument("--simulated-conversation-msg-max-tokens", type=int, default=100)
-    # parser.add_argument("--simulated-conversation-top-p", type=float, default=0.9)
-    # parser.add_argument("--simulated-conversation-temp", type=float, default=0.7)
     parser.add_argument("--simulated-conversation-theme", type=str, default=None)
     parser.add_argument("--simulated-conversation-n-messages", type=int, default=5)
-    parser.add_argument("--permute-options", "-po", action="store_true")
-    parser.add_argument("--azure-openai", action="store_true")
-    parser.add_argument("--simulated-human-knows-persona", action="store_true")
-    parser.add_argument("--simulated-population-type", "-pop", type=str, default="tolkien_characters", choices=["permutations", "tolkien_characters", "famous_people"])
+    parser.add_argument("--interlocutors", type=str, default="human")
+    parser.add_argument("--long-messages", action="store_true")
+    parser.add_argument("--interlocutor-knows-persona", action="store_true")
+    parser.add_argument("--simulated-population-config", "-pop", type=str, required=True)
     parser.add_argument("--permutations", "-p", type=int, default=50)
     parser.add_argument("--permute-options-seed", type=str)
     parser.add_argument("--overwrite", action="store_true")
@@ -789,15 +715,22 @@ if __name__ == "__main__":
 
     assert args.pvq_version == "pvq_auto"
 
+    if args.model_config_path is not None:
+        # engine is the name of the json file
+        model_config_filename = os.path.basename(args.model_config_path)
+        args.engine = os.path.splitext(model_config_filename)[0]
+
+    else:
+        # use the default config directory
+        args.model_config_path = f'./models/configs/{args.engine}.json'
+
     if not args.data_dir.startswith("data"):
         raise ValueError(f"data_dir should be inside data, and it's {args.data_dir}")
 
-    if args.simulated_population_type == "permutations":
-        if args.simulated_human_knows_persona:
-            raise ValueError("Use simulated_human_knows_persona cannot be used with permutations sim. population type")
-    else:
-        if args.simulated_conversation_theme and not args.simulated_human_knows_persona:
-            raise ValueError("Use simulated_human_knows_persona.")
+    if args.simulated_population_config == "permutations":
+        if args.interlocutor_knows_persona:
+            warnings.warn("interlocutor_knows_persona cannot be used with permutations sim. population type -> setting to false.")
+            args.interlocutor_knows_persona = False
 
     if args.simulated_conversation_theme in ["None", "none"]:
         args.simulated_conversation_theme = None
@@ -805,9 +738,6 @@ if __name__ == "__main__":
     if args.estimate_gpt_tokens:
         if "gpt" not in args.engine and args.engine != "dummy":
             raise ValueError("Only gpt-4 gpt-3 and dummy support estimating GPT tokens")
-
-    if args.permute_options and args.permute_options_seed is None:
-        raise ValueError("Permute options string should be defined for stability")
 
     start_time = time.time()
     main(args)

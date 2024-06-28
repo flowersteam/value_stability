@@ -1,0 +1,13 @@
+{
+  "model_class": "OpenAIModel",
+  "model_id": "gpt-4o-0513",
+  "system_message": true,
+  "base_model_template": false,
+  "use_azure": true,
+  "load_args": {},
+  "generation_args": {
+    "max_tokens": 100,
+    "n": 1,
+    "temperature": 0.7
+  }
+}

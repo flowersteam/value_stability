@@ -1,5 +1,4 @@
 visualizations/
-data/*
 logs/*
 .idea/
 results*
@@ -7,3 +6,8 @@ results*
 *__pycache__*
 backup_run_scripts/
 old_results
+Leaderboard/data_analysis/analysis_results/*
+Leaderboard/logs/*
+Leaderboard/results/*
+PLOSONE/logs/*
+PLOSONE/results/*

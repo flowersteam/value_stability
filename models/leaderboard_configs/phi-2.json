@@ -1,0 +1,16 @@
+{
+  "model_class": "HuggingFaceModel",
+  "model_id": "microsoft/phi-2",
+  "system_message": true,
+  "base_model_template": true,
+  "load_args": {
+    "token": "HF_TOKEN",
+    "torch_dtype": "auto",
+    "device_map": "cuda"
+  },
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true,
+    "temperature": 0.7
+  }
+}

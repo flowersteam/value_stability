@@ -1,0 +1,10 @@
+{
+  "model_class": "InteractiveModel",
+  "model_id": "interactive",
+  "system_message": true,
+  "base_model_template": true,
+  "load_args": {
+    "trust_remote_code": true,
+    "device_map": "auto"
+  }
+}

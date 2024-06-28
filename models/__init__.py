@@ -14,14 +14,15 @@ from transformers import BitsAndBytesConfig
 
 hf_token = os.environ["HF_TOKEN"]
 
-def load_model_args(model_name):
+
+def load_model_args(model_config_path):
 
     try:
-        with open(f'./models/configs/{model_name}.json', 'r') as file:
+        with open(model_config_path, 'r') as file:
             model_args = json.load(file)
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"The configuration file for {model_name} could not be found.")
+        raise FileNotFoundError(f"The configuration file {model_config_path} could not be found.")
 
     if 'load_args' in model_args:
         # parse hf token
@@ -44,9 +45,6 @@ def load_model_args(model_name):
     return ModelClass, model_args
 
 
-def create_model(model_name, additional_model_args=None):
-
-    from mergedeep import merge
-    ModelClass, model_args = load_model_args(model_name)
-    model_args = merge(model_args if model_args else {}, additional_model_args)
+def create_model(model_config_path):
+    ModelClass, model_args = load_model_args(model_config_path)
     return ModelClass(**model_args)

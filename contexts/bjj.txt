@@ -1,0 +1,55 @@
+1) Basic Hygiene/Etiquette:
+    - Rules are meant to maintain a sanitary environment and prevent transmission of bacterial and fungal infections
+    - only clean feet and absolutely no footwear on the mat; footwear must be worn into the bathroom and removed before stepping onto the mat
+    - all open wounds should have multiple layers of liquid bandage applied onto them and a second layer of Vaseline/Savalon on top of the liquid bandage (all plasters/band-aids will come off and should not be worn onto the mats)
+    - rashguards and spats are form fitting elastic protective wear that will reduce the chances of you from getting matburn and acquiring or transmitting infections – please buy and wear them (recommendations below in section 10)
+    - a customary slap and fist bump precedes each activity
+
+2) Goal of Ground Fighting/Grappling:
+To increase control over your opponent while on the ground (positional dominance), eventually placing him in a situation where he is forced to surrender (submission holds)
+    - your degree of control over your opponent is directly related to where you are in relation to your opponent in the hierarchy of positions (discussed below in section 3)
+    - submission holds either inflict pain or immobilize your opponents to the point where they are incapable of fighting and surrender to you or risk bodily harm (discussed in section 6)
+    - a submission may be applied from any position at any time and immediately signals the end of the “fight” but increasing your degree of control over your opponent allows you to more easily and efficiently apply submission holds
+
+3) Basic Positions:
+This is a basic list of positions in grappling that you should be familiar with and has been listed in decreasing order of dominance. As a general rule of thumb, being on top grants you greater mobility, striking capacity and the assistance of gravity which translates to a natural advantage. This is extremely evident in MMA fights where being on the bottom is a distinct disadvantage due to ground and pound; in sport grappling however, being on the bottom may confer some advantages as the person on top has his ability to strike nullified. As a whole, positions 1-7 are thus considered advantageous while 9-15 are disadvantageous while 8 is neutral. Some practitioners specialize in specific techniques and can make a traditionally disadvantageous position into an advantageous one [eg: 10th planet students are usually extremely well versed in bottom half guard and will view that position as advantageous]
+    - Mount and backmount (top)
+    - knee on belly (top)
+    - side control (top)
+    - scarf hold (top)
+    - north south (top)
+    - turtle (top)
+    - half-guard (top)
+    - closed guard – NEUTRAL POINT* (top or bottom can go either way depending on rules)
+    - half-guard (bottom)
+    - turtle (bottom)
+    - north south (bottom)
+    - scarf hold (bottom)
+    - side control
+    - knee on belly (bottom)
+    - mount and back mount (bottom)
+To clear up any confusion, when it is said that “Y is mounted on X”, it refers to Y being on top and straddling X. However, when “person X is in person Y’s guard”, Y is actually on the bottom using his legs to control person X who is on top. This is a concept that is confusing to many beginners when describing the positions they are in. Just remember that the guard is unique in that while the person is technically on the bottom, he retains some semblance of control. Other positions exist but they are outside of the scope of this guide and should NOT be focused on until required because they contain concepts that are not integral to understanding basic BJJ
+
+4) Transitions:
+As the term implies, this category involves moves that allow for practitioners to climb the hierarchy of positions to be in a better position to finish their opponents. Transitions from certain positions are named while others are not – those that you ought to be familiar with have been listed below
+    - Escapes: generic term referring to moving up the hierarchy from one more negative position in the hierarchy to a less albeit still negative position [eg: moving from 14 > 13]
+    - Regaining Guard: moving from a less advantageous position (9-15) directly into the neutral position (8)
+    - Sweeps: moving from a neutral position (8) into an advantageous position (most commonly 1-3)
+    - Guard Pass: moving from top in the neutral position (8) into an advantageous position (1-7); traditionally comprises 2 parts involving a guard break followed by the actual guard pass
+    - Guard Break: prying apart the crossed ankles of an opponent’s closed guard and removing the stalling/control mechanism giving the closed guard its strength
+    - Reversal: moving from a less advantageous position (9-15) directly into an advantageous position (1-7) entirely bypassing the neutral position (8)
+
+5) Submissions:
+The “meat” of grappling that everyone wants to jump straight into. Much like life however, sometimes a bit of setup/foreplay is necessary before getting down to business; the end goal however is always to finish (in a submission). I have broken down the submissions into their mechanism of action and how they inflict pain or immobilize the opponent on an anatomical basis. Note that for each submission there are multiple positions from which you can use them from but wherever in the positional hierarchy you lock in the submission, it will work the same way, target the same joint in the same fashion – which is why I believe this is a superior method of categorization. As a beginner, it is not important for you to learn a comprehensive list of submissions nor is it a good use of your time to find out every submission from a specific position of your choice [eg: do not go out and learn every submission from bottom guard]. Simply be aware of the potential ways someone can submit you and how they work. Tldr is in bold so only read the text if you’re very interested in how things work
+
+a. Air Chokes: your throat is squished and you can’t breathe
+b. Blood Chokes (strangles): blood can’t go into your brain and you pass out
+c. Pressure Chokes: someone’s bodyweight is on your chest and you can’t breathe
+d. Wrist locks: wrist is bent in different directions till it hurts
+e. Elbow locks: elbow is hyperextended, bent or wedged apart till it hurts
+f. Shoulder locks: popping the arm out of its socket
+g. Ankle locks: foot is moved till it hurts
+h. Knee locks: knee is directly hyperextended or indirectly twisted till it hurts
+i. Crotch/Hip locks: literally spreading their legs
+j. Cervical locks: head is hyperflexed till your neck hurts
+k. Spinal locks: body is twisted till your spine hurts

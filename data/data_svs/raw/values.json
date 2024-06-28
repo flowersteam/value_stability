@@ -1,0 +1,13 @@
+{
+    "_comment": "Indices of questions (starts with 1).",
+    "Conformity": [11, 20, 40, 47],
+    "Tradition": [18, 32, 36, 44, 51],
+    "Benevolence": [33, 45, 49, 52, 54],
+    "Universalism": [1, 17, 24, 26, 29, 30, 35, 38],
+    "Self-Direction": [5, 16, 31, 41, 53],
+    "Stimulation": [9, 25, 37],
+    "Hedonism": [4, 50, 57],
+    "Achievement": [34, 39, 43, 55],
+    "Power": [3, 12, 27, 46],
+    "Security": [8, 13, 15, 22, 56]
+}

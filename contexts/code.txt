@@ -1,0 +1,97 @@
+template<typename fctype, typename ftype>
+static inline void
+eig_wrapper(char JOBVL,
+                   char JOBVR,
+                   char**args,
+                   npy_intp const *dimensions,
+                   npy_intp const *steps)
+{
+    ptrdiff_t outer_steps[4];
+    size_t iter;
+    size_t outer_dim = *dimensions++;
+    size_t op_count = 2;
+    int error_occurred = get_fp_invalid_and_clear();
+    GEEV_PARAMS_t<ftype> geev_params;
+
+    assert(JOBVL == 'N');
+
+    STACK_TRACE;
+    op_count += 'V'==JOBVL?1:0;
+    op_count += 'V'==JOBVR?1:0;
+
+    for (iter = 0; iter < op_count; ++iter) {
+        outer_steps[iter] = (ptrdiff_t) steps[iter];
+    }
+    steps += op_count;
+
+    if (init_geev(&geev_params,
+                           JOBVL, JOBVR,
+                           (fortran_int)dimensions[0], dispatch_scalar<ftype>())) {
+        LINEARIZE_DATA_t a_in;
+        LINEARIZE_DATA_t w_out;
+        LINEARIZE_DATA_t vl_out;
+        LINEARIZE_DATA_t vr_out;
+
+        init_linearize_data(&a_in,
+                            geev_params.N, geev_params.N,
+                            steps[1], steps[0]);
+        steps += 2;
+        init_linearize_data(&w_out,
+                            1, geev_params.N,
+                            0, steps[0]);
+        steps += 1;
+        if ('V' == geev_params.JOBVL) {
+            init_linearize_data(&vl_out,
+                                geev_params.N, geev_params.N,
+                                steps[1], steps[0]);
+            steps += 2;
+        }
+        if ('V' == geev_params.JOBVR) {
+            init_linearize_data(&vr_out,
+                                geev_params.N, geev_params.N,
+                                steps[1], steps[0]);
+        }
+
+        for (iter = 0; iter < outer_dim; ++iter) {
+            int not_ok;
+            char **arg_iter = args;
+            /* copy the matrix in */
+            linearize_matrix((ftype*)geev_params.A, (ftype*)*arg_iter++, &a_in);
+            not_ok = call_geev(&geev_params);
+
+            if (!not_ok) {
+                process_geev_results<fctype>(&geev_params,
+dispatch_scalar<ftype>{});
+                delinearize_matrix((fctype*)*arg_iter++,
+                                                 (fctype*)geev_params.W,
+                                                 &w_out);
+
+                if ('V' == geev_params.JOBVL) {
+                    delinearize_matrix((fctype*)*arg_iter++,
+                                                     (fctype*)geev_params.VL,
+                                                     &vl_out);
+                }
+                if ('V' == geev_params.JOBVR) {
+                    delinearize_matrix((fctype*)*arg_iter++,
+                                                     (fctype*)geev_params.VR,
+                                                     &vr_out);
+                }
+            } else {
+                /* geev failed */
+                error_occurred = 1;
+                nan_matrix((fctype*)*arg_iter++, &w_out);
+                if ('V' == geev_params.JOBVL) {
+                    nan_matrix((fctype*)*arg_iter++, &vl_out);
+                }
+                if ('V' == geev_params.JOBVR) {
+                    nan_matrix((fctype*)*arg_iter++, &vr_out);
+                }
+            }
+            update_pointers((npy_uint8**)args, outer_steps, op_count);
+        }
+
+        release_geev(&geev_params);
+    }
+
+    set_fp_invalid_or_clear(error_occurred);
+}

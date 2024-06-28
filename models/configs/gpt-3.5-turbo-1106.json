@@ -3,6 +3,7 @@
   "model_id": "gpt-3.5-turbo-1106",
   "system_message": true,
   "base_model_template": false,
+  "use_azure": true,
   "load_args": {},
   "generation_args": {
     "max_tokens": 100,

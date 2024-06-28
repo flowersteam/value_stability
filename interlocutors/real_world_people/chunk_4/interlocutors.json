@@ -1,0 +1,252 @@
+[
+    {
+        "name": "Eva Peron",
+        "description": "Eva Peron (1919 \u2013 1952) First Lady of Argentina 1946 \u2013 1952.",
+        "gender": "F"
+    },
+    {
+        "name": "Malcolm X",
+        "description": "Malcolm X (1925 \u2013 1965) American Black nationalist leader.",
+        "gender": "M"
+    },
+    {
+        "name": "Vladimir Putin",
+        "description": "Vladimir Putin (1952 \u2013 ) Russian leader.",
+        "gender": "M"
+    },
+    {
+        "name": "Oprah Winfrey",
+        "description": "Oprah Winfrey (1954 \u2013 ) American TV presenter, actress, entrepreneur.",
+        "gender": "F"
+    },
+    {
+        "name": "Thomas Edison",
+        "description": "Thomas Edison ( 1847 \u2013 1931) American inventor.",
+        "gender": "M"
+    },
+    {
+        "name": "Marilyn Monroe",
+        "description": "Marilyn Monroe (1926 \u2013 1962) American actress, singer, model.",
+        "gender": "F"
+    },
+    {
+        "name": "Mahatma Gandhi",
+        "description": "Mahatma Gandhi (1869 \u2013 1948) Leader of Indian independence movement.",
+        "gender": "M"
+    },
+    {
+        "name": "John F. Kennedy",
+        "description": "John F. Kennedy (1917 \u2013 1963) US President 1961 \u2013 1963.",
+        "gender": "M"
+    },
+    {
+        "name": "Margaret Thatcher",
+        "description": "Margaret Thatcher (1925 - 2013) Prime Minister of the United Kingdom",
+        "gender": "F"
+    },
+    {
+        "name": "George Orwell",
+        "description": "George Orwell (1903 \u2013 1950) British author.",
+        "gender": "M"
+    },
+    {
+        "name": "Madonna Louise Ciccone",
+        "description": "Madonna Louise Ciccone (1958 - ) American singer-songwriter and actress.",
+        "gender": "F"
+    },
+    {
+        "name": "Joseph Stalin",
+        "description": "Joseph Stalin (1879 \u2013 1953) Leader of Soviet Union 1924 \u2013 1953.",
+        "gender": "M"
+    },
+    {
+        "name": "Queen Elizabeth II",
+        "description": "Queen Elizabeth II (1926 \u2013 2022) British monarch since 1954.",
+        "gender": "F"
+    },
+    {
+        "name": "Barack Obama",
+        "description": "Barack Obama (1961 \u2013 ) US President 2008 \u2013 2016.",
+        "gender": "M"
+    },
+    {
+        "name": "Ludwig Beethoven",
+        "description": "Ludwig Beethoven (1770 \u2013 1827) German composer.",
+        "gender": "M"
+    },
+    {
+        "name": "Helen Keller",
+        "description": "Helen Keller (1880 - 1968) American author.",
+        "gender": "F"
+    },
+    {
+        "name": "Queen Victoria",
+        "description": "Queen Victoria ( 1819 \u2013 1901) British monarch 1837 \u2013 1901.",
+        "gender": "F"
+    },
+    {
+        "name": "Henry Ford",
+        "description": "Henry Ford (1863 \u2013 1947) US Industrialist.",
+        "gender": "M"
+    },
+    {
+        "name": "Simone de Beauvoir",
+        "description": "Simone de Beauvoir (1908 - 1986) French philosopher and feminist.",
+        "gender": "F"
+    },
+    {
+        "name": "Mother Teresa",
+        "description": "Mother Teresa (1910 \u2013 1997) Macedonian Catholic missionary nun.",
+        "gender": "F"
+    },
+    {
+        "name": "Walt Disney",
+        "description": "Walt Disney (1901 \u2013 1966) American film producer.",
+        "gender": "M"
+    },
+    {
+        "name": "Frida Kahlo",
+        "description": "Frida Kahlo (1907 - 1954) Mexican painter.",
+        "gender": "F"
+    },
+    {
+        "name": "Serena Jameka Williams",
+        "description": "Serena Jameka Williams (1981 \u2013 ) US tennis player.",
+        "gender": "F"
+    },
+    {
+        "name": "Bill Gates",
+        "description": "Bill Gates (1955 \u2013 ) American businessman, founder of Microsoft.",
+        "gender": "M"
+    },
+    {
+        "name": "Pope Francis",
+        "description": "Pope Francis (1936 \u2013 ) First pope from the Americas.",
+        "gender": "M"
+    },
+    {
+        "name": "Catherine the Great",
+        "description": "Catherine the Great (1729 - 1796) Russian empress",
+        "gender": "F"
+    },
+    {
+        "name": "John Lennon",
+        "description": "John Lennon (1940 \u2013 1980) British musician, member of the Beatles.",
+        "gender": "M"
+    },
+    {
+        "name": "Elvis Presley",
+        "description": "Elvis Presley (1935 \u2013 1977) American musician.",
+        "gender": "M"
+    },
+    {
+        "name": "Amelia Earhart",
+        "description": "Amelia Earhart (1897 - 1937) American aviator.",
+        "gender": "F"
+    },
+    {
+        "name": "J.K.Rowling",
+        "description": "J.K.Rowling (1965 \u2013 ) British author.",
+        "gender": "F"
+    },
+    {
+        "name": "Benazir Bhutto",
+        "description": "Benazir Bhutto (1953 \u2013 2007) Prime Minister of Pakistan 1993 \u2013 1996.",
+        "gender": "F"
+    },
+    {
+        "name": "Dalai Lama",
+        "description": "Dalai Lama (1938 \u2013 ) Spiritual and political leader of Tibetans.",
+        "gender": "M"
+    },
+    {
+        "name": "Ruth Bader Ginsburg",
+        "description": "Ruth Bader Ginsburg (1933 - 2020) Former Associate Justice of the Supreme Court of the United States.",
+        "gender": "F"
+    },
+    {
+        "name": "Pope John Paul II",
+        "description": "Pope John Paul II (1920 \u2013 2005) Polish Pope.",
+        "gender": "M"
+    },
+    {
+        "name": "Marie Curie",
+        "description": "Marie Curie (1867 \u2013 1934) Polish-French physicist and chemist.",
+        "gender": "F"
+    },
+    {
+        "name": "Vincent Van Gogh",
+        "description": "Vincent Van Gogh (1853 \u2013 1890) Dutch artist.",
+        "gender": "M"
+    },
+    {
+        "name": "Rosa Parks",
+        "description": "Rosa Parks (1913 \u2013 2005)  American civil rights activist.",
+        "gender": "F"
+    },
+    {
+        "name": "Jane Goodall",
+        "description": "Jane Goodall (1934 - ) English primatologist and anthropologist.",
+        "gender": "F"
+    },
+    {
+        "name": "Martin Luther King",
+        "description": "Martin Luther King (1929 \u2013 1968)  American civil rights campaigner.",
+        "gender": "M"
+    },
+    {
+        "name": "Angela Merkel",
+        "description": "Angela Merkel (1954 - ) Chancellor of Germany",
+        "gender": "F"
+    },
+    {
+        "name": "Amy Winehouse",
+        "description": "Amy Winehouse (1983 - 2011) English singer and songwriter.",
+        "gender": "F"
+    },
+    {
+        "name": "Indira Gandhi",
+        "description": "Indira Gandhi (1917 \u2013 1984) Prime Minister of India 1966 \u2013 1977.",
+        "gender": "F"
+    },
+    {
+        "name": "Jawaharlal Nehru",
+        "description": "Jawaharlal Nehru (1889 \u2013 1964) Indian Prime Minister 1947 \u2013 1964.",
+        "gender": "M"
+    },
+    {
+        "name": "Donald Trump",
+        "description": "Donald Trump (1946 \u2013 ) Businessman, US President.",
+        "gender": "M"
+    },
+    {
+        "name": "Nelson Mandela",
+        "description": "Nelson Mandela (1918 \u2013 2013) South African President anti-apartheid campaigner.",
+        "gender": "M"
+    },
+    {
+        "name": "Joan of Arc",
+        "description": "Joan of Arc (1412 \u2013 1431) patron saint of France.",
+        "gender": "F"
+    },
+    {
+        "name": "Winston Churchill",
+        "description": "Winston Churchill (1874 \u2013 1965) British Prime Minister during WWII.",
+        "gender": "M"
+    },
+    {
+        "name": "Muhammad Ali",
+        "description": "Muhammad Ali (1942 \u2013 2016) American Boxer and civil rights campaigner.",
+        "gender": "M"
+    },
+    {
+        "name": "Angelina Jolie",
+        "description": "Angelina Jolie (1975 \u2013 ) Actress, director, humanitarian.",
+        "gender": "F"
+    },
+    {
+        "name": "Haile Selassie",
+        "description": "Haile Selassie (1892 \u2013 1975) Emperor of Ethiopia 1930 \u2013 1974.",
+        "gender": "M"
+    }
+]

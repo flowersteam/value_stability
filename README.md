@@ -1,33 +1,38 @@
-# LLM perspectives
+# Stick to Your Role!
 
-This codebase is based on MMLU codebase. - link
+This codebase is based on MMLU codebase. - https://github.com/hendrycks/test
 
-## Installation
+This is the code to evaluate models on the Stick to Your Role! leaderboard, but also to recreate results from our related paper - https://arxiv.org/abs/2402.14846.
 
-Setup the conda env
+This README.md concerns the leaderboard, for the paper see thie [README](PLOSONE/README.md)
+
+
+
+# Installation
+
+## Conda environment
 ```
 conda create -n llm_stability python=3.10
 conda activate llm_stability
 cd test/
 pip install -r requirements.txt 
-```
 
-For phi-1 and phi-2
-```
-conda create -n llm_stability python=3.10
-conda activate llm_stability_phi
-cd test/
-pip install -r requirements.txt 
-pip install transformers==4.37.0
+pip install flash-attn 
 ```
 
 ## Setup environment variables
-The rest of this guide will use the dummy model, which is a random baseline. For other models, you may wish to set various environment variables.
 
-- To use OpenAI models, set the `OPENAI_API_KEY` env variable:
+- To use OpenAI models with the OpenAI API, set the `OPENAI_API_KEY` env variable (e.g. in your `.bashrc`):
 ```commandline
 export OPENAI_API_KEY="<your_key>"
 ```
+- To use OpenAI model with the Azure API, set the variables for each model, for example:
+```
+export AZURE_OPENAI_ENDPOINT_gpt_35_turbo_0125="<your_endpoint>"
+export AZURE_OPENAI_KEY_gpt_35_turbo_0125="<your_key>"
+export AZURE_OPENAI_API_VERSION_gpt_35_turbo_0125="<your_version>"
+```
+For additional models (apart from gpt-3.5-turbo-0125/1106 and gpt-4o-0513), refer to `models/openaimodel.py` to make the additional changes.
 - To use huggingface models, set the `HF_HOME` env variable to define your cache directory:
 
 ```commandline
@@ -41,25 +46,26 @@ export HF_TOKEN="<your_token>"
 
 
 
-## Evaluating and computing the stability
+# Evaluating models and computing the stability
 
-### Minimal example
+
+## Minimal example: one model in one context
 
 You can run one evaluation with the following command
 
 ```
 theme="joke"
 python -u evaluate.py \
+--model-config-path ./models/leaderboard_configs/dummy.json \
 --engine "dummy" \
 --experiment_name pvq_test \
 --data_dir data/data_pvq \
---simulated-population-type tolkien_characters \
+--simulated-population-config tolkien_characters \
 --simulated-conversation-theme $theme \
 --simulated-conversation-n-messages 3 \
 --permute-options-seed "testing_seed" \
---simulated-human-knows-persona \
+--interlocutor-knows-persona \
 --save_dir test_results/pvq_tolkien_dummy_$theme \
---permute-options \
 --pvq-version "pvq_auto" \
 --verbose
 ```
@@ -67,44 +73,14 @@ python -u evaluate.py \
 This will evaluate a dummy (random) model simulating tolkien characters on PVQ.
 It will save the results into: ```test_results/pvq_tolkien_dummy_chess_2024_04_29_19_54_19/results.json```
 
-Now lets run the same command for "joke":
+You can a different model in one of the following two ways:
+- `--engine <model_name>` where `<model_name>` is the name of a config file in `./models/configs/*` (e.g. `--model phi-1`)
+- `--model-config-path <path_to_config>`, where `<path_to_config>` is a config file path (e.g. `--model-config-path ./models/configs/phi-1.json`)
 
-```
-theme="joke"
-python -u evaluate.py \
---engine "dummy" \
---experiment_name pvq_test \
---data_dir data/data_pvq \
---simulated-population-type tolkien_characters \
---simulated-conversation-theme $theme \
---simulated-conversation-n-messages 3 \
---permute-options-seed "testing_seed" \
---simulated-human-knows-persona \
---save_dir test_results/pvq_tolkien_dummy_$theme \
---permute-options \
---pvq-version "pvq_auto" \
---verbose
-```
 
-Now lets run the same command for "grammar":
-```
-theme="grammar"
-python -u evaluate.py \
---engine "dummy" \
---experiment_name pvq_test \
---data_dir data/data_pvq \
---simulated-population-type tolkien_characters \
---simulated-conversation-theme $theme \
---simulated-conversation-n-messages 3 \
---permute-options-seed "testing_seed" \
---simulated-human-knows-persona \
---save_dir test_results/pvq_tolkien_dummy_$theme \
---permute-options \
---pvq-version "pvq_auto" \
---verbose
-```
+Now repeat the same command but with `theme="joke"` and with `theme="grammar"`.
 
-Great now we have three results and we can compute the stability of the model with the following command:
+You should have three results. You can now compute the stability of the model with the following command:
 ```
 python ./visualization_scripts/data_analysis.py test_results/pvq_tolkien_dummy_*
 ```
@@ -118,137 +94,137 @@ Rank-Order      Ipsative
 0.0051          0.0074
 ```
 
-You can see examples of other settings in the ``run_single.sh`` script.
+You can see examples of other settings in the ``Leaderboard/run_scripts/run_single.sh`` script.
 The purpose of this script if to increase the clarity of this tutorial.
 
-It requires to set 7 parameters, which are by default set to:
-```
-1. Theme:grammar
-2. Seed:1
-3. N messages:3
-4. LLM:dummy
-5. Questionnaire:pvq
-6. Population:tolkien_characters
-7. Experiment name:test
-```
 
-Following the comments in the script, you can modify those parameters.
+Following the comments in the script, you can modify the relevant parameters.
 
 From the test directory, you can run
 ```
-bash run_single.sh
+bash Leaderboard/run_scripts/run_single_demo.sh
 ```
 
 This will evaluate a dummy model, which chooses random answers on the PVQ questionniare.
 
 
-## Campaign evaluations and stability computation
+## Evaluate and analyze a single model in all contexts
 
-In the previous example we showed how to run one evaluation: administer a questionnaire to a simulated population with **one** model, **one** conversation topic, and **one** seed.
+In the previous example we showed how to run one evaluation: administer a questionnaire to a simulated population with **one** model, **one** conversation topic.
 
-In practice, we want to run those evaluations as a campaign (evaluate on **many** topics and **many** seeds).
-We can do this with the ``run_campaign_seeds.sh`` script.
+### Evaluate
 
-This script accepts two arguments:
- - model: ```dummy``` (to see all available models run ``ls models/configs/``)
- - the experiment_type as defined by the following table
+In practice, we want to run those evaluations as a campaign, i.e. evaluate on **many** topics.
+We can do this with the ``Leaderboard/run_scripts/run_stability_leaderboard.sh`` script.
 
-| experiment_type | task     | simulated population |
-|-----------------|----------|----------------------|
-| pvq_tolk        | PVQ      | tolkien characters   |
-| pvq_fam         | PVQ      | real-world personas  |
-| religion        | religion | real-world personas  |
-| don             | donation | tolkien characters   |
-| bag             | stealing | tolkien characters   |
+The model is defined as an argument to the script (e.g. ```dummy```).
+This should correspond to a config file in `models/leaderboard_configs/` (e.g. `models/leaderboard_configs/dummy.json`).
 
-We can use this script on a regular or a slurm-based machine to run 25 evaluations: 5 seeds (answer permutations) x 5 conversation topics at once.
+We can use this script on a regular or a slurm-based machine:
 
 - Regular machine:
 
-    This will run the 25 evaluations sequentially:
+    This will run the 9 evaluations sequentially:
     ```commandline
-    for i in {0..24}; do SLURM_ARRAY_TASK_ID=$i bash run_campaign_seeds.sh dummy pvq_tolk ; done
+    for i in {0..9}; do SLURM_ARRAY_TASK_ID=$i bash Leaderboard/run_scripts/run_stability_leaderboard.sh dummy ; done
     ```
 
     This will run the 25 evaluations in parallel:
     ```commandline
-    for i in {0..24}; do SLURM_ARRAY_TASK_ID=$i bash run_campaign_seeds.sh dummy pvq_tolk & done; wait
+    for i in {0..9}; do SLURM_ARRAY_TASK_ID=$i bash Leaderboard/run_scripts/run_stability_leaderboard.sh dummy & done; wait
     ```
 
 - Slurm-based machine:
     
-    Make sure to modify your slurm config at the top of ``run_campaign_seeds.sh``.
-    This will launch 25 parallel jobs
+    Make sure to modify your slurm config at the top of the ``run_stability_leaderboard.sh`` script.
+    This will launch 9 parallel jobs
     ```commandline
-    sbatch run_campaign_seeds.sh dummy pvq_tolk
+    sbatch Leaderboard/run_scripts/run_stability_leaderboard.sh dummy 
     ```
 
-After evaluating a dummy model by any of the above commands, you should have the following folders structure:
+After evaluating a dummy model by any of the above commands, you should have the following folders and jsons:
 ```commandline
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_0
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_2
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_4
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_6
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_8
+Leaderboard/results/stability_leaderboard/dummy/chunk_0_2024_06_03_22_08_24/results.json
+Leaderboard/results/stability_leaderboard/dummy/chunk_1_2024_06_03_22_08_24/results.json
+Leaderboard/results/stability_leaderboard/dummy/chunk_2_2024_05_27_20_29_11/results.json
+Leaderboard/results/stability_leaderboard/dummy/chunk_3_2024_05_27_20_29_11/results.json
+Leaderboard/results/stability_leaderboard/dummy/chunk_4_2024_05_27_20_29_11/results.json
+Leaderboard/results/stability_leaderboard/dummy/chunk_chess_0_2024_05_28_17_57_08/results.json
+Leaderboard/results/stability_leaderboard/dummy/chunk_grammar_1_2024_05_29_18_57_05/results.json
+Leaderboard/results/stability_leaderboard/dummy/chunk_no_conv_2024_05_27_20_29_11/results.json
+Leaderboard/results/stability_leaderboard/dummy/chunk_svs_no_conv_2024_06_23_13_37_28/results.json
 ```
-Each should have 5 subdirectories with a results.json file, e.g:
+
+In other words the following command should return 9:
+```
+ls Leaderboard/results/stability_leaderboard/dummy/*/results.json | wc -l
+```
+
+### Analyze the results
+
+We can compute the stability of one model with the `data_analysis.py` script by passing the directories with the results:
 ```commandline
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_0/theme_chess_2024_04_29_20_33_03/results.json
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_0/theme_grammar_2024_04_29_20_23_19/results.json
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_0/theme_history_2024_04_29_20_33_06/results.json
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_0/theme_joke_2024_04_29_20_33_07/results.json
-results/stability_default_params_pvq_tolkien_characters/dummy/seed_0/theme_poem_2024_04_29_20_33_05/results.json
+python ./visualization_scripts/data_analysis.py Leaderboard/results/stability_leaderboard/dummy/*
 ```
 
-In other words the following command should return 25:
-
-```
-ls  results/stability_default_params_pvq_tolkien_characters/dummy/seed_*/*/results.json | wc -l
-```
-
-We can compute the stability in one seed with the `data_analysis.py` script:
-```commandline
-python ./visualization_scripts/data_analysis.py results/stability_default_params_pvq_tolkien_characters/dummy/seed_0/*
-```
-
-As we are using a dummy model we should get close to zero stabilities:
+As we are using a dummy model we should get close to zero stability:
 ```
 ------------------------
 Aggregated metrics
 ------------------------
 Rank-Order      Ipsative
--0.0030         -0.0088
-```
-TIP: you can add `--no-ips` argument to the `data_analysis.py` call to compute only Rank-Order stability (this is much faster).
-
-
-We can also evaluate many seeds and models at once with the `campaign_data_analysis.py` script.
-It takes the following arguments:
-- `--fig-name` argument defines the experiment type to evaluate (looks in the correct results subdirectory), options are: `tolk_ro_t,fam_ro_t,religion_t,don_t,bag_t`
-- `--assert-n-context 5` ensures that each seed has 5 topics
-- `--all-models` evaluates all models in the `./models/configs` directory, if you do not set this argument you can manually define the models list on line `33`.
-
-
-```commandline
-python campaign_data_analysis.py --fig-name tolk_ro_t --assert-n-context 5 --all-models
+0.0037         0.0050
 ```
 
-Towards the end of the output you should see a line as follows `random: -0.00029 +/- 0.005`, again the dummy model has near-zero stability.
-The displayed figure should show one bar (it will not be easily visible as it is ~0.0).
+The `data_analysis.py` script has a set of usefull parameters:
+- `--no-ips` to compute only Rank-Order stability (this is much faster)
+- `--plot-matrix` shows the correlations between pairs of contexts
+- `--plot-matrix` shows the correlations between pairs of contexts
+- `--plot-structure` shows the circular structure of values
+- `--structure` only computes the correlation with the theoretical order
+- `--cronbach-alpha` compute the cronbach alphas
+- `--plot-ranks` visualizes the different simulated participant values
+- `--results-json-savepath` save the results into a json
+- `--assert-n-dirs <n>` asserts that there are n loaded jsons
 
+## Evaluate and analyze multiple models in all contexts
 
-# Recreating the results
+### Evaluate mupltiple models
 
-Using the above described procedure you can evaluate the models in the paper with `run_campaign_seeds.sh` script.
-And then evaluate them with the `campaign_data_analysis.py` script.
+The previous sections showed how to evaluate one model. All models can be evaluated on a slurm-based server by running 
+```
+bash Leaderboard/run_scripts/run_all_models_leaderboard.sh
+```
+This script is very clear and intended to be used for reference.
+It is simple or run it on a regular machine, with the changes described above.
 
-We recommend starting with the religion task because this is the smallest one.
+### Analyze multiple models
+Once all the models have been evaluated we can analyse all of their results by running
+```
+bash Leaderboard/data_analysis/analyse_all_models.sh
+```
+This script is also very clear and can be used for reference.
+It This scripts should save the results for each model in `Leaderboard/data_analysis/analysis_results` (one `json` for each model).
+
+### Rank the model (create the leaderboard)
+
+The jsons in `Leaderboard/data_analysis/analysis_result` can be used to rank the models.
+
+We can rank the models by running
+```
+# for the cardinal leaderboard
+python Leaderboard/data_analysis/rank_models.py 
+# for the ordinal leaderboard
+python Leaderboard/data_analysis/rank_ordinal.py  --ordinal
+```
+
+These scripts rank them models and also compute the leaderboards sensitivity and stability with [benchbench](https://socialfoundations.github.io/benchbench/).
 
 # Adding a new model
 
 Most models on the huggingface hub can be added by simply adding a new config file.
 ```commandline
-touch ./models/configs/mymodelname.json
+touch ./models/leaderboard_configs/mymodelname.json
 ```
 
 This assumes that the model can be used in the standard way as follows:
