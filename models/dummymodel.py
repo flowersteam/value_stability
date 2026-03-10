@@ -73,24 +73,7 @@ class DummyModel(Model):
 
             # print(f"************************FORMATTED PROMPT*********************\n{formatted_prompt}\n******************")
 
-        import re
-        try:
-            msg_lines = messages[-2]['content'].split("\n")
-            if messages[0]['content'].startswith("You are M") and \
-                any([l.startswith("AMBITIOUS") for l in msg_lines]) or \
-                any([l.startswith("INFLUENTIAL") for l in msg_lines]) or \
-                any([l.startswith("CAPABLE") for l in msg_lines]) or \
-                any([l.startswith("SUCCESSFUL") for l in msg_lines]):
-                generation = messages[-2]['content'][messages[-2]['content'].index(") 7") - 1:][:1]
-
-            else:
-                # generation = messages[-2]['content'][messages[-2]['content'].index(") -1") - 1:][:1]
-                generation = random.choice([f"{c}" for c in answers])
-
-        except:
-            generation = random.choice([f"{c}" for c in answers])
-
-        # generation = random.choice([f"{c}" for c in answers])
+        generation = random.choice([f"{c}" for c in answers])
 
         if self.verbose:
             print(f"-(generation)->{generation}")

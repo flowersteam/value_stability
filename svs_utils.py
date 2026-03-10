@@ -1,20 +1,31 @@
 import copy
 import json
 import time
+from termcolor import colored
 
 from termcolor import cprint
 import numpy as np
 from utils import softmax, create_choices_str, map_choice_to_number
 
 
-def create_response_msg(query_str, pred, chosen_value):
-    # add responses to the conversation history
-    response_string = create_choices_str([pred], [chosen_value]).lstrip()
+def create_response_msg(pred, chosen_value, match, generation, cot=False):
+    chosen_letter = create_choices_str([pred], [chosen_value]).lstrip()
+    assert chosen_letter[0] == "("
+    chosen_letter = chosen_letter.lstrip("(")
 
-    assert response_string[0] == "("
-    response_string = response_string.lstrip("(")
+    if cot:
+        # CoT model must have previous CoT
+        if match:
+            assert "Answer:" in generation
+            max_cot_len = 1000  # 1000 tokens; *4 # rule of thumb: 4 characters per token
+            resp_msg_assistant = generation.split("Answer:")[0][:max_cot_len*4] + f"Answer: ({chosen_letter[0]})"
+        else:
+            # if CoT was wrong remove it
+            resp_msg_assistant = f"Answer: ({chosen_letter[0]})"
 
-    resp_msg_assistant = query_str + response_string
+    else:
+        # add responses to the conversation history
+        resp_msg_assistant = f"({chosen_letter[0]})"  # capital letter in brackets
 
     return {"role": "assistant", "content": resp_msg_assistant}
 
@@ -57,25 +68,23 @@ def score_non_extreme_value_svs(
     )
 
     cprint("\nQuery the score of a non extreme value", "green")
-    generation, lprobs = llm_generator.predict(
+    generation, lprobs, match = llm_generator.predict(
         messages=messages,
         answers=answers,
         label_2_text_option_dict=label_2_text_option_dict,
-        query_string=score_prompt['query_str'],
+        # query_string=score_prompt['query_str'],
         assistant_label=simulated_participant["name"].upper()
     )
 
     probs = softmax(np.array(lprobs))
     pred = {i: c for i, c in enumerate(answers)}[np.argmax(lprobs)]
     score = map_choice_to_number(pred, permutations_dict, offset=-1)
-    print("Result:")
-    print(f"\t-generation: {generation}")
-    print(f"\t-pred: {pred}")
-    print(f"\t-chosen value score: {score}")
+    print(colored(f"Pred{'' if match else '(random)'}:{pred} (Generation:{generation}; Score: {score})", "green"))
 
     # add responses to the conversation history
     # add query and response to messages
-    resp_assistant_msg = create_response_msg(score_prompt['query_str'], pred, score)
+    cot_model = getattr(llm_generator, "cot", False)
+    resp_assistant_msg = create_response_msg(pred, score, match, generation, cot=cot_model)
     messages.append(resp_assistant_msg)
 
     cor = False
@@ -165,11 +174,11 @@ def choose_extreme_value(
 
     cprint(f"\nGROUP {group_id}  Extreme value str: {extreme_value_str}", "green")
     group_answers = choices[:len(group_values_to_choose_from)]
-    generation, lprobs = llm_generator.predict(
+    generation, lprobs, match = llm_generator.predict(
         messages=messages,
         answers=group_answers,
         label_2_text_option_dict=label_2_text_option_dict,
-        query_string=prompt['query_str'],
+        # query_string=prompt['query_str'],
         assistant_label=simulated_participant["name"].upper()
     )
     chosen_i = np.argmax(lprobs)
@@ -178,13 +187,12 @@ def choose_extreme_value(
 
     item_i_in_group = group_values.index(chosen_value)
 
-    print("Result")
-    print(f"\t-generation: {generation}")
-    print(f"\t-pred: {pred}")
-    print(f"\t-chosen {extreme_value_str} important value: {chosen_value}")
+    print(colored(f"Pred{'' if match else '(random)'}:{pred} (Generation:{generation}; Chosen value: {chosen_value})", "green"))
+    print("------------------")
 
     # add query and response to messages
-    resp_assistant_msg = create_response_msg(prompt['query_str'], pred, chosen_value)
+    cot_model = getattr(llm_generator, "cot", False)
+    resp_assistant_msg = create_response_msg(pred, chosen_value, match, generation, cot=cot_model)
     messages.append(resp_assistant_msg)
 
     return chosen_value, item_i_in_group, messages
@@ -225,11 +233,11 @@ def score_extreme_value(
 
     # query the model
     print("\nQuery the score")
-    generation, lprobs = llm_generator.predict(
+    generation, lprobs, match = llm_generator.predict(
         messages=messages,
         answers=answers,
         label_2_text_option_dict=label_2_text_option_dict,
-        query_string=prompt['query_str'],
+        # query_string=prompt['query_str'],
         assistant_label=simulated_participant["name"].upper()
     )
 
@@ -238,13 +246,11 @@ def score_extreme_value(
     cor = False
     score = map_choice_to_number(pred, participant_perm_dicts[chosen_item_i], offset=-1)
 
-    print("Result:")
-    print(f"\t-generation: {generation}")
-    print(f"\t-pred: {pred}")
-    print(f"\t-chosen score: {score}")
+    print(colored(f"Pred{'' if match else '(random)'}:{pred} (Generation:{generation}; Score: {score})", "green"))
+    print("------------------")
 
     # add query and response to messages
-    resp_assistant_msg = create_response_msg(prompt['query_str'], pred, score)
+    resp_assistant_msg = create_response_msg(pred, score, match, generation)
     messages.append(resp_assistant_msg)
 
     return cor, lprobs, probs, pred, generation, score, messages

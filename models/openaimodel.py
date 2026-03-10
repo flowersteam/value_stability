@@ -5,8 +5,11 @@ from termcolor import colored
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from openai import AzureOpenAI
-from openai import OpenAI
+try:
+    from openai import AzureOpenAI
+    from openai import OpenAI
+except:
+    pass
 import tiktoken
 
 
@@ -22,12 +25,18 @@ class OpenAIModel(Model):
         "gpt-4o-0513": "gpt-4o-0513",
     }
 
-    def __init__(self, model_id, use_azure, generation_args, *args, **kwargs):
+    def __init__(self, model_id, generation_args, load_args=None, use_azure=False, *args, **kwargs):
 
         super(OpenAIModel, self).__init__(model_id, *args, **kwargs)
+        raise DeprecationWarning("Update according to openroutermodel.py")
 
-        self.azure_id = self.openai_2_azure_tag[self.model_id]
         self.use_azure = use_azure
+        self.azure_id = self.openai_2_azure_tag[self.model_id] if self.use_azure else None
+
+        self.load_args = {"api_key": os.environ['OPENAI_API_KEY']}
+
+        if load_args is not None:
+            self.load_args = {**self.load_args, **load_args}
 
         if generation_args is None:
             self.generation_args = {}
@@ -65,7 +74,8 @@ class OpenAIModel(Model):
         else:
             print(colored("Using OPENAI API", "red"))
             time.sleep(1)
-            self.model = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+
+            self.model = OpenAI(**self.load_args)
 
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
@@ -85,14 +95,14 @@ class OpenAIModel(Model):
             raise ValueError("label_2_text_option_dict must be provided")
 
         messages = messages[:]
-        messages.append({"role": "assistant", "content": query_string})
+        messages[-1]['content'] += query_string
+        # messages.append({"role": "assistant", "content": query_string}) # query string in assistant
 
         if self.verbose:
             print(f">>> {self.__class__}.predict")
             print_chat_messages(messages)
 
         # get the encoding for each letter in choices
-        logit_bias = {self.tokenizer.encode(c)[0]: 100 for c in answers}
 
         c = self.completions_with_backoff(
             model=self.azure_id if self.use_azure else self.model_id,
@@ -100,7 +110,6 @@ class OpenAIModel(Model):
             max_tokens=1,
             n=1,
             temperature=0,
-            logit_bias=logit_bias,
         )
 
         generation = c.choices[0].message.content

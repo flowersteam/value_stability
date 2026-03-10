@@ -1,0 +1,17 @@
+{
+  "model_class": "HuggingFaceModel",
+  "model_id": "microsoft/Phi-3.5-mini-instruct",
+  "system_message": false,
+  "base_model_template": false,
+  "load_args": {
+    "token": "HF_TOKEN",
+    "trust_remote_code": true,
+    "torch_dtype": "auto",
+    "device_map": "cuda"
+  },
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true,
+    "temperature": 0.7
+  }
+}

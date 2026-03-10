@@ -1,0 +1,15 @@
+{
+  "_comment": "run with run_vllm_model_leaderboard.sh <model_id>",
+  "model_path": "/lustre/fsn1/projects/rech/imi/utu57ed/.cache/huggingface/hub/models--Qwen--Qwen2.5-VL-7B-Instruct/snapshots/5b5eecc7efc2c3e86839993f2689bbbdf06bd8d4",
+  "model_class": "VllmModel",
+  "model_id": "model",
+  "system_message": true,
+  "base_model_template": false,
+  "cot": true,
+  "load_args": {},
+  "generation_args": {
+    "max_tokens": 100,
+    "n": 1,
+    "temperature": 0.7
+  }
+}

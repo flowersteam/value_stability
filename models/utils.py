@@ -1,4 +1,5 @@
 from termcolor import colored
+import random
 
 def print_chat_messages(messages):
     print("*********************")
@@ -102,30 +103,31 @@ def apply_base_model_template(
     else:
         return formatted_conversation
 
-def dummy_lprobs_from_generation(response, answers, label_2_text_option_dict):
+def dummy_lprobs_from_generation(response, answers, label_2_text_option_dict, match_text_options=False):
 
-    def find_first_match(response, labels_strings, case_insensitive):
+    if match_text_options:
+        def find_first_match(response, labels_strings, case_insensitive):
 
-        if case_insensitive:
-            labels_strings = [(l, s.lower()) for l, s in labels_strings]
-            response = response.lower()
+            if case_insensitive:
+                labels_strings = [(l, s.lower()) for l, s in labels_strings]
+                response = response.lower()
 
-        for l, s in labels_strings:
-            if s in response:
-                return l, s
+            for l, s in labels_strings:
+                if s in response:
+                    return l, s
 
-        return None, None
+            return None, None
 
-    # first try to match substrings
-    # sort from longest to shortest (to avoid substrings, "Like me" vs "A little like me")
-    labels_text_options = sorted(label_2_text_option_dict.items(), key=lambda x: len(x[1]), reverse=True)
-    label, option = find_first_match(response, labels_text_options, case_insensitive=True)
+        # first try to match substrings
+        # sort from longest to shortest (to avoid substrings, "Like me" vs "A little like me")
+        labels_text_options = sorted(label_2_text_option_dict.items(), key=lambda x: len(x[1]), reverse=True)
+        label, option = find_first_match(response, labels_text_options, case_insensitive=True)
 
-    if option is not None:
-        lprobs = [-0.01 if a == label else -100 for a in answers]
-        return lprobs
+        if option is not None:
+            lprobs = [-0.01 if a == label else -100 for a in answers]
+            return lprobs, True
 
-    def find_matches(strings):
+    def find_matches(response, strings):
         lprobs = [-100] * len(strings)
         for i, op in enumerate(strings):
             if op in response:
@@ -135,19 +137,42 @@ def dummy_lprobs_from_generation(response, answers, label_2_text_option_dict):
 
         return lprobs, match
 
-    # look for 'A.' -> change to A)
-    lprobs, match = find_matches([f"{a}." for a in answers])
+    # look for '(A)'
+    lprobs, match = find_matches(response, [f"({a})" for a in answers])
     if match:
-        return lprobs
+        return lprobs, match
 
-    # look for "A "
-    lprobs, _ = find_matches([f"{a} " for a in answers])
-    if match:
-        return lprobs
+    # all of those should not be used for freeform, (must be used otherwise)
+    # # look for '(A'
+    # lprobs, match = find_matches(response, [f"({a})" for a in answers])
+    # if match:
+    #     return lprobs, match
+    #
+    # # look for 'A)'
+    # lprobs, match = find_matches(response, [f"{a})" for a in answers])
+    # if match:
+    #     return lprobs, match
+    #
+    # # look for 'A.'
+    # lprobs, match = find_matches(response, [f"{a}." for a in answers])
+    # if match:
+    #     return lprobs, match
+    #
+    # # look for "A "
+    # lprobs, match = find_matches(response, [f"{a} " for a in answers])
+    # if match:
+    #     return lprobs, match
+    #
+    # # look for "A"
+    # lprobs, match = find_matches(response, answers)
+    # if match:
+    #     return lprobs, match
 
-    # look for "A"
-    lprobs, _ = find_matches(answers)
-    return lprobs
+    # no match was found, choose a random one
+    print("No match found, choosing a random answer")
+    random_i = random.randint(0, len(answers) - 1)
+    lprobs[random_i] = -0.01
+    return lprobs, match
 
 
 

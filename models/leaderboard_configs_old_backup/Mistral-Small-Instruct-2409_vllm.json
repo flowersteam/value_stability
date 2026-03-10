@@ -1,0 +1,17 @@
+{
+  "model_class": "VllmModel",
+  "model_id": "mistralai/Mistral-Small-Instruct-2409",
+  "_vllm_command": "vllm serve mistralai/Mistral-Small-Instruct-2409 --tokenizer_mode mistral --config_format mistral --load_format mistral",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {
+    "api_key": "EMPTY",
+    "base_url": "http://0.0.0.0:8000/v1"
+  },
+  "tokenizer_load_args": {},
+  "generation_args": {
+    "max_tokens": 100,
+    "n": 1,
+    "temperature": 0.7
+  }
+}

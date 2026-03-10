@@ -1,0 +1,14 @@
+{
+  "_comment": "run with run_vllm_model_leaderboard.sh <model_id>",
+  "model_path": "/lustre/fsn1/projects/rech/imi/utu57ed/.cache/huggingface/hub/models--TheDrummer--Cydonia-22B-v1.2/snapshots/c66965b3253b755d5082efcea6e53bd553a5e9fa",
+  "model_class": "VllmModel",
+  "model_id": "model",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {},
+  "generation_args": {
+    "max_tokens": 100,
+    "n": 1,
+    "temperature": 0.7
+  }
+}

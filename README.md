@@ -12,13 +12,22 @@ This README.md concerns the leaderboard, for the paper see thie [README](PLOSONE
 
 ## Conda environment
 ```
-conda create -n llm_stability python=3.10
-conda activate llm_stability
+conda create -n llm_stability_311 python=3.11
+conda activate llm_stability_311
 cd test/
 pip install -r requirements.txt 
 
 pip install flash-attn 
 ```
+
+## install R packages
+```R```
+And then in R shell
+```
+install.packages("lavaan")
+install.packages("jsonlite")
+```
+
 
 ## Setup environment variables
 
@@ -42,6 +51,13 @@ export HF_HOME="$HOME/.cache/huggingface"
 - To use huggingface gated models, set the `HF_TOKEN env variable`
 ```commandline
 export HF_TOKEN="<your_token>"
+```
+
+- To use togetherAI models, install the library, and set the `TOGETHER_API_KEY`
+```commandline
+conda activate llm_stability
+pip install together
+export TOGETHER_API_KEY="<your_token>"
 ```
 
 
@@ -141,6 +157,12 @@ We can use this script on a regular or a slurm-based machine:
     ```commandline
     sbatch Leaderboard/run_scripts/run_stability_leaderboard.sh dummy 
     ```
+    
+    If you are using vllm make sure to set the arguments in `run_stability_leaderboard_vllm.sh`. And then you can use the following command to run the evaluations:
+    ```commandline
+    sbatch Leaderboard/run_scripts/run_stability_leaderboard_vllm.sh dummy_vllm 
+    ```
+  
 
 After evaluating a dummy model by any of the above commands, you should have the following folders and jsons:
 ```commandline
@@ -189,7 +211,7 @@ The `data_analysis.py` script has a set of usefull parameters:
 
 ## Evaluate and analyze multiple models in all contexts
 
-### Evaluate mupltiple models
+### Evaluate multiple models
 
 The previous sections showed how to evaluate one model. All models can be evaluated on a slurm-based server by running 
 ```
@@ -210,12 +232,13 @@ It This scripts should save the results for each model in `Leaderboard/data_anal
 
 The jsons in `Leaderboard/data_analysis/analysis_result` can be used to rank the models.
 
-We can rank the models by running
+We can rank the models by running (first add the model to the list of models in the same script)
 ```
-# for the cardinal leaderboard
+# To get the data for the leaderboard you can run
 python Leaderboard/data_analysis/rank_models.py 
-# for the ordinal leaderboard
-python Leaderboard/data_analysis/rank_ordinal.py  --ordinal
+
+# To order models based on a single metrics you can use
+python Leaderboard/data_analysis/rank_metric.py 
 ```
 
 These scripts rank them models and also compute the leaderboards sensitivity and stability with [benchbench](https://socialfoundations.github.io/benchbench/).
@@ -272,7 +295,7 @@ Here is an example of the config file for the LLaMa-2-7b model:
 ```
 It should be filled as follows:
 - `model_class` - should be `"HuggingFaceModel"` unless for you want to do define your own class (it should be in ``models/``)
-- `model_id` is equivalent to the huggingface hub id
+- `model_id` is equivalent to the huggingface hub id or a path to a local model
 - `base_model_template` - `true` if the model is a base model, `false` if the model is chat or instruct tuned (the tokenizer has the `apply_chat_template` function)
 - `system_message` - `true` if the model has the system message input or if it's a base model
 - `load_args` - arguments that will be passed to `AutoTokenizer.from_pretrained` and `AutoModelForCausalLM.from_pretrained` in addition to the `model_id` 

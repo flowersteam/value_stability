@@ -8,7 +8,12 @@ from .model import Model
 from .dummymodel import DummyModel
 from .interactivemodel import InteractiveModel
 from .openaimodel import OpenAIModel
-from .huggingfacemodel import *
+from .vllmmodel import VllmModel, DeepSeekModel
+from .reasoningvllmmodel import ReasoningVllmModel, QwQReasoningVllmModel, RekaReasoningVllmModel, Qwen3ReasoningVllmModel
+from .nemotronvllmmodel import NemotronVllmModel
+# from .huggingfacemodel import * # deprecated
+from .openroutermodel import OpenRouterModel
+# from .deepseekmodel import DeepSeekModel, ReasoningDeepSeekModel # deprecated
 
 from transformers import BitsAndBytesConfig
 

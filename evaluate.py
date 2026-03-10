@@ -27,8 +27,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, 
 from personas.utils import simulated_participant_to_name
 
 
-hf_cache_dir = get_hf_cache_dir()
-os.environ['HF_HOME'] = hf_cache_dir
+# hf_cache_dir = get_hf_cache_dir()
+# os.environ['HF_HOME'] = hf_cache_dir
 
 
 def create_permutation_dicts(args, n_options, choices, num_questions, population_size=None):
@@ -127,15 +127,15 @@ def get_prompt_skeleton(experiment_name, args, simulated_participant_description
     else:
         set_persona_str = f"{prefix} {simulated_participant_description}"
 
-    if args.query_prompt:
-        query_str = args.query_prompt
-    else:
-        query_str = "Answer: ("
+    # if args.query_prompt:
+    #     query_str = args.query_prompt
+    # else:
+    #     query_str = "Answer: ("
 
     prompt_skeleton = {
         "set_persona_str": set_persona_str,  # remove newline from the end
         "questionnaire_description": questionnaire_description,
-        "query_str": f"{query_str}",
+        # "query_str": f"{query_str}",
     }
 
     return prompt_skeleton
@@ -168,7 +168,6 @@ def format_example(df, idx, experiment_name, args, permutations_dict, simulated_
 
     # testing, remove the manual thing later (keep the function)
     assert item_str == item_str_
-
 
     prompt = get_prompt_skeleton(
         experiment_name=experiment_name,
@@ -376,11 +375,11 @@ def eval(args, test_df, participant_perm_dicts, llm_generator=None, simulated_pa
                 messages_conv=messages_conv
             )
 
-            generation, lprobs = llm_generator.predict(
+            generation, lprobs, match = llm_generator.predict(
                 messages=messages,
                 answers=answers,
                 label_2_text_option_dict=label_2_text_option_dict,
-                query_string=prompt['query_str'],
+                # query_string=prompt['query_str'],
                 assistant_label=simulated_participant["name"].upper()
             )
 
@@ -390,7 +389,7 @@ def eval(args, test_df, participant_perm_dicts, llm_generator=None, simulated_pa
             score = map_choice_to_number(pred, permutations_dict)
 
             if args.verbose:
-                print(colored(f"Pred:{pred} (Generation:{generation}; Score: {score})", "green"))
+                print(colored(f"Pred{'' if match else '(random)'}:{pred} (Generation:{generation}; Score: {score})", "yellow"))
                 print("------------------")
 
             cors[item_i] = cor
@@ -583,12 +582,7 @@ def main(args):
             if "pvq" in args.data_dir or "svs" in args.data_dir:
                 assert "pvq" in args.experiment_name or "svs" in args.experiment_name
 
-                profile_values_idx_json = os.path.join(os.path.join(args.data_dir, "raw"), "values.json")
-
-                with open(profile_values_idx_json) as f:
-                    profile_values_idx = json.load(f)
-
-                profile_values_idx = {k: np.array(v)-1 for k, v in profile_values_idx.items() if k != "_comment"}
+                profile_values_idx = load_value_2_items_dict(args.data_dir)
 
                 metrics[sim_part_i][subject] = {}
 
@@ -697,7 +691,7 @@ if __name__ == "__main__":
     parser.add_argument("--model-config-path", type=str, default=None)
     parser.add_argument("--format", type=str, default="chat", choices=["chat"])
     parser.add_argument('--profile', type=str, help='Profile definition in format "k:v;k:v;k:v", ex. "age:35;interests:reading books"')
-    parser.add_argument("--query-prompt", "-qp", type=str, help="Use Answer(as ONE letter): where applicable.")
+    # parser.add_argument("--query-prompt", "-qp", type=str)
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--assert-params", action="store_true")
     parser.add_argument("--estimate-gpt-tokens", "-t", action="store_true")
@@ -738,6 +732,14 @@ if __name__ == "__main__":
     if args.estimate_gpt_tokens:
         if "gpt" not in args.engine and args.engine != "dummy":
             raise ValueError("Only gpt-4 gpt-3 and dummy support estimating GPT tokens")
+
+    # parse additional arguments
+
+    _, model_args = load_model_args(args.model_config_path)
+    additional_args = model_args.get('additional_args', None)
+    if additional_args:
+        vars(args).update(additional_args)
+        print(f"Args updated with: {additional_args}.")
 
     start_time = time.time()
     main(args)

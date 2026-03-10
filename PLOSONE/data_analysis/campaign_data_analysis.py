@@ -265,9 +265,9 @@ seed_strings = [f"seed_{i}" for i in range(0, 9, 2)]
 if figure_name == "tolk_ro_t":
 
     experiment_dirs = ["stability_default_params_pvq_tolkien_characters"]
-    title = "(A)"
+    # title = "(A)"
 
-    add_legend = True
+    # add_legend = True
     legend_fontsize = 17
 
     legend_loc = (0.001, 0.99)
@@ -285,7 +285,7 @@ elif figure_name == "fam_ro_t":
 
     experiment_dirs = ["stability_default_params_pvq_famous_people"]
 
-    title = "(B)"
+    # title = "(B)"
 
     add_legend = False
     metric = "Rank-Order"
@@ -303,7 +303,7 @@ elif figure_name == "religion_t":
 
     rotatation_x_labels = 90
 
-    title = "(C)"
+    # title = "(C)"
 
     experiment_dirs = ["stability_default_params_religion_famous_people"]
 
@@ -320,7 +320,7 @@ elif figure_name == "religion_t":
 
 elif figure_name == "don_t":
 
-    title = "(A)"
+    # title = "(A)"
     experiment_dirs = ["stability_default_params_tolkien_donation_tolkien_characters"]
     add_legend = True
     legend_fontsize = 16
@@ -335,7 +335,7 @@ elif figure_name == "don_t":
 
 elif figure_name.startswith("bag_t"):
 
-    title = "(B)"
+    # title = "(B)"
 
     experiment_dirs = ["stability_default_params_tolkien_bag_tolkien_characters"]
 
@@ -382,7 +382,7 @@ elif figure_name.startswith("paired_tolk_ro"):
     if figure_name.endswith("uni"):
         value_to_pair = "Universalism"
         letter = "(A)"
-        add_legend = True
+        # add_legend = True
         legend_fontsize = 15
     elif figure_name.endswith("ben"):
         value_to_pair = "Benevolence"
@@ -396,7 +396,7 @@ elif figure_name.startswith("paired_tolk_ro"):
     else:
         raise ValueError(f"Undefined figure name: {figure_name}")
 
-    title = letter
+    # title = letter
 
     y_label = f"Rank-Order stability\nwith donation"
 
@@ -635,7 +635,8 @@ plt.tight_layout()
 
 fig_path = f'PLOSONE/data_analysis/visualizations/{figure_name}'
 os.makedirs(os.path.dirname(fig_path), exist_ok=True)
-savepath = f'{fig_path}.png'
+# savepath = f'{fig_path}.png'
+savepath = f'{fig_path}.pdf'
 
 print(f"save to: {savepath}")
 plt.savefig(savepath)
@@ -653,7 +654,7 @@ if FDR_test:
     binary_matrix = (p_values_corrected_matrix < 0.05).astype(int)
     models_labels = [parse_x_labels(m) for m in models]
 
-    # fig_path = f'visualizations/{figure_name}_comparison.pdf'
-    comp_savepath = f'{fig_path}_comparison.svg'
+    # comp_savepath = f'{fig_path}_comparison.svg'
+    comp_savepath = f'{fig_path}_comparison.pdf'
 
     plot_comparison_matrix(models_labels, binary_matrix, figure_savepath=comp_savepath, title=title)

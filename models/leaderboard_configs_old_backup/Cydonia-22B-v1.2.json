@@ -1,0 +1,16 @@
+{
+  "model_class": "HuggingFaceModel",
+  "model_id": "TheDrummer/Cydonia-22B-v1.2",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {
+    "device_map": "auto",
+    "torch_dtype": "torch.bfloat16"
+  },
+  "tokenizer_load_args": {},
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true,
+    "temperature": 0.7
+  }
+}

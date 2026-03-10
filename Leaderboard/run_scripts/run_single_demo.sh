@@ -6,7 +6,9 @@
 
 #theme="None"
 #theme="grammar"
-theme="chess"
+#theme="chess"
+#theme="contexts/leaderboard_reddit_chunks/chunk_0.jsonl"
+theme="contexts/leaderboard_reddit_chunks/chunk_3.jsonl"
 #theme="contexts/leaderboard_reddit_chunks/chunk_4.jsonl"
 
 
@@ -28,8 +30,9 @@ permute_options_seed="test_seed_$seed"
 #################################################
 
 #engine="gpt-3.5-turbo-0125"
-engine="dummy"
+#engine="dummy"
 #engine="llama_3_8b_instruct"
+engine="gemma-2-9b-it"
 
 model_config="./models/leaderboard_configs/$engine.json"
 

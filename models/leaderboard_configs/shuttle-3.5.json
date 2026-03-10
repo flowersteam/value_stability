@@ -1,0 +1,15 @@
+{
+  "_comment": "run with run_vllm_model_leaderboard_qwen3.sh <model_id>",
+  "model_path": "/lustre/fsn1/projects/rech/imi/utu57ed/.cache/huggingface/hub/models--shuttleai--shuttle-3.5/snapshots/a041e465328c0f507fa6323f3c06b797aa53765b",
+  "model_class": "Qwen3ReasoningVllmModel",
+  "model_id": "model",
+  "system_message": true,
+  "base_model_template": false,
+  "cot": true,
+  "load_args": {},
+  "generation_args": {
+    "max_generation_tokens": 100,
+    "n": 1,
+    "temperature": 0.7
+  }
+}

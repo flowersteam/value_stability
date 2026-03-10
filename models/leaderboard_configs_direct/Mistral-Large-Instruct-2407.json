@@ -1,0 +1,14 @@
+{
+  "_comment": "run with run_vllm_model_leaderboard.sh <model_id>",
+  "model_path": "/lustre/fsn1/projects/rech/imi/utu57ed/.cache/huggingface/hub/models--mistralai--Mistral-Large-Instruct-2407/snapshots/c6a230e7b1070914dd28bd6bc3b9c7c3d9e612ae/",
+  "model_class": "VllmModel",
+  "model_id": "model",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {},
+  "generation_args": {
+    "max_tokens": 100,
+    "n": 1,
+    "temperature": 0.7
+  }
+}

@@ -1,5 +1,10 @@
 from itertools import combinations
+from benchbench.data import load_ordinal_benchmark
 from benchbench.measures import cardinal, ordinal
+from benchbench.utils.base import rankdata
+from benchbench.utils.win_rate import WinningRate
+from benchbench.utils.metric import get_rank_diff
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -37,9 +42,8 @@ def model_2_color(model):
 
 def extract_chunk_label(model, dir, assert_chunk_labels=None):
     label = dir.removeprefix(f"./Leaderboard/results/stability_leaderboard/{model}/").split("_202")[0]
-
     if assert_chunk_labels is not None:
-        assert label in assert_chunk_labels
+        assert label in assert_chunk_labels, f"Label {label} not recognized."
 
     return label
 
@@ -63,36 +67,54 @@ def parse_pairwise_staiblity_dirs_to_labels(pairwise_stabilities, assert_chunk_l
     return parsed_pairwise_stabilities
 
 
-def compute_stability_and_sensitivity(data_df=None, pairwise_stabilities=None, type="cardinal"):
+def compute_stability_and_sensitivity(data_df=None, pairwise_stabilities=None, type="cardinal", cols=None):
     assert type in ["cardinal", "ordinal"]
     # Compute sensitivity and stability
 
-    if pairwise_stabilities is not None:
-        data, cols = {}, []
-        models = pairwise_stabilities.keys()
+    # if pairwise_stabilities is not None:
+    #     data, cols = {}, []
+    #     models = pairwise_stabilities.keys()
+    #
+    #     for ch1, ch2 in combinations(chunk_labels, 2):
+    #         col = f"{ch1}-{ch2}"
+    #         cols.append(col)
+    #         data[col] = []
+    #         for model in models:
+    #             data[col].append(pairwise_stabilities[model][ch1][ch2])
+    #
+    #     data_df = pd.DataFrame.from_dict(data)
 
-        for ch1, ch2 in combinations(chunk_labels, 2):
-            col = f"{ch1}-{ch2}"
-            cols.append(col)
-            data[col] = []
-            for model in models:
-                data[col].append(pairwise_stabilities[model][ch1][ch2])
-
-        data_df = pd.DataFrame.from_dict(data)
-
-    elif data_df is not None:
+    if cols is None:
         cols = data_df.columns
 
-    else:
-        raise ValueError("Data or pairwise similarities must be set.")
 
     if type == "cardinal":
         diversity_w, diversity_max_MRC = cardinal.get_diversity(data_df, cols)
         sensitivity_tau, sensitivity_MRC = cardinal.get_sensitivity(data_df, cols)
 
     elif type == "ordinal":
+
+        # check if rank diff is too big; not clear what this does?
+        # what are the assumptions on the data_df order of models?
+        # wr = WinningRate(data_df, cols)
+        # new_rank = rankdata(-wr.get_winning_rate())
+        # old_rank = np.arange(len(data_df))
+        # rank_diff = get_rank_diff(new_rank, old_rank)
+
+        # if rank_diff[0] > 0.1:
+        #     print("Rank diff too big")
+        #     diversity_w, diversity_max_MRC = np.nan, np.nan
+        #     sensitivity_tau, sensitivity_MRC = np.nan, np.nan
+        # else:
+
         diversity_w, diversity_max_MRC = ordinal.get_diversity(data_df, cols)
+
+        # inv_indices = None
+        # inv_indices = list(np.arange(np.maximum(len(data_df) // 4, 6)))
+        # print(ordinal.get_sensitivity(data_df, cols, inv_indices=inv_indices)[1])
+        # sensitivity_tau, sensitivity_MRC = ordinal.get_sensitivity(data_df, cols, inv_indices=inv_indices)
         sensitivity_tau, sensitivity_MRC = ordinal.get_sensitivity(data_df, cols)
+
 
     else:
         raise ValueError(f"Unknown type: {type}")
@@ -113,7 +135,7 @@ def compute_win_rates(data_df):
 
     return win_rates_df
 
-def plot_ranked_models(model_scores, diversity, sensitivity, title=None):
+def plot_ranked_models(model_scores, title=None, y_label=None, savepath=None):
     # PLOS
     xs, ys = zip(*model_scores.items())
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -125,15 +147,17 @@ def plot_ranked_models(model_scores, diversity, sensitivity, title=None):
     ax.bar(xs, ys, color=colors)
     ax.set_xticklabels(xs, rotation=90)
     plt.ylim((-0.1, 1))
-    plt.ylabel("Cardinal")
+    plt.ylabel(y_label)
     plt.subplots_adjust(bottom=0.43)
 
     title_str = f"{title} " if title is not None else ""
 
-    if diversity is not None and sensitivity is not None:
-        title_str += f"(div: {diversity:.2f}, sen: {sensitivity:.2f})"
 
     if title_str != "":
         plt.title(title_str)
 
-    plt.show()
+    if savepath:
+        plt.savefig(savepath)
+        print(f"Saved to: {savepath}")
+    else:
+        plt.show()

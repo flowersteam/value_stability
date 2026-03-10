@@ -1,28 +1,15 @@
 #!/bin/bash
-## V100 -jz
-##SBATCH -A imi@v100
-##SBATCH -C v100-32g
-##SBATCH --time=09:59:00
-##SBATCH --gres=gpu:3
-### A100 -jz
-#SBATCH -A imi@a100
+##SBATCH -A imi@h100
+##SBATCH -C h100
+#SBATCH -A vgw@a100
 #SBATCH -C a100
-#SBATCH --time=7:00:00
-#SBATCH --gres=gpu:3
-### Adastra
-##SBATCH --time=6:00:00 # maximum execution time (HH:MM:SS)
-##SBATCH --account=iso1996
-##SBATCH -C MI250
-###SBATCH --exclusive
-##SBATCH --gres=gpu:1
-##SBATCH --cpus-per-task=8
-##SBATCH --hint=nomultithread
-##SBATCH --ntasks-per-node=1
-##SBATCH --nodes=1
-## other params
+#SBATCH --time=09:59:00
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=24
 #SBATCH --array=0-8 # all
-#SBATCH -o slurm_logs/log_%A_%a.out
-#SBATCH -e slurm_logs/log_%A_%a.err
+##SBATCH --array=1-4 # todo: remove
+#SBATCH -o slurm_logs/log_%A_%a.log
+#SBATCH -e slurm_logs/log_%A_%a.log
 
 ##########################################################
 # Set the questionnaire and population (using the second command argument)
@@ -47,6 +34,7 @@ n_msgs=3
 # 1-5 -> reddit chunks (human inter.)
 # 6 -> chess (personas inter chunk 0)
 # 7 -> grammar (personas inter chunk 1)
+# 8 -> svs
 
 if [ $eval_i -eq 0 ]; then
   # no conversation
@@ -123,6 +111,7 @@ echo "SAVE DIR: "$SAVE_DIR
 echo "Evaluation"
 echo "ID:"$SLURM_ARRAY_TASK_ID
 echo "engine:"$engine
+echo "config:"$model_config
 echo "theme:"$theme
 echo "permute_options_seed:"$permute_options_seed
 echo "n_msgs:"$n_msgs
@@ -136,7 +125,6 @@ echo "chunk_i:$chunk_i"
 echo "savedir:$SAVE_DIR"
 echo "logdir:$LOG_DIR"
 
-
 # Start the experiment
 ##########################################################
 mkdir -p $LOG_DIR
@@ -147,15 +135,16 @@ echo "SLURM_JOB_ID: "$SLURM_JOB_ID"_"$SLURM_ARRAY_TASK_ID | tee -a $LOG_DIR/log_
 source $HOME/.bashrc
 ## define the conda env to use
 
-# jz
-module load python/3.10.4
-conda activate llm_stability_441
+# remove module loading if not needed
+module load arch/h100
+module load python/3.11.5
+#module load cuda/12.2.0
+#module load cudnn/8.9.7.29-cuda
 
-## adastra
-#module load conda
-#conda activate llm_stability_441
+conda activate llm_stability_new
 
-python -u evaluate.py \
+
+FORCE_COLOR=1 python -u evaluate.py \
   --simulated-population-config $population_config \
   --simulated-conversation-theme $theme \
   --simulated-conversation-n-messages $n_msgs \

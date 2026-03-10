@@ -3,13 +3,14 @@ import matplotlib.pyplot as plt
 from plot_utils import *
 
 # metric = 'Rank-Order'
-# metric = 'Structure_correlation'
+# metric = 'Rank_distance'
+metric = 'Stress'
 # metric = 'Cronbach_alpha'
 
 # metric = 'CFI'
 # metric = 'TLI'
 # metric = 'SRMR'
-metric = 'RMSEA'
+# metric = 'RMSEA'
 
 print(f"Ranking models cardinally based on {metric}.")
 
@@ -27,7 +28,8 @@ models = [
     "Qwen2-7B-Instruct",
     "Qwen2-72B-Instruct",
     "gpt-3.5-turbo-0125",
-    "gpt-4o-0513"
+    "gpt-4o-0513",
+    "dummy"
 ]
 
 mmlu_models = {

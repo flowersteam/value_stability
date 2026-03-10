@@ -1,4 +1,5 @@
 import os
+import warnings
 
 from .model import Model
 from .utils import *
@@ -15,12 +16,8 @@ except:
     pass
 
 
-def get_hf_cache_dir():
-    return os.environ['HF_HOME']
-
-
-hf_cache_dir = get_hf_cache_dir()
-os.environ['HF_HOME'] = hf_cache_dir
+# hf_cache_dir = get_hf_cache_dir()
+# os.environ['HF_HOME'] = hf_cache_dir
 
 
 class StoppingCriteriaSub(StoppingCriteria):
@@ -50,6 +47,7 @@ class HuggingFaceModel(Model):
             *args,
             **kwargs
     ):
+        raise DeprecationWarning("Update according to openroutermodel.py -> free generation")
         super(HuggingFaceModel, self).__init__(
             model_id=model_id,
             base_model_template=base_model_template,
@@ -88,21 +86,23 @@ class HuggingFaceModel(Model):
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.model_id,
                 **self.tokenizer_load_args,
-                cache_dir=hf_cache_dir,
+                # cache_dir=hf_cache_dir,
             )
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_id,
                 **self.load_args,
-                cache_dir=hf_cache_dir
+                # cache_dir=hf_cache_dir
             ).eval()
-
+        print(f"Model loaded: {self.model_id}")
         end_time = time.time()
 
         # set the max context length
         if hasattr(self.model.config, "model_max_length"):
             self.max_context_length = self.model.config.model_max_length
-        else:
+        elif hasattr(self.model.config, "max_position_embeddings"):
             self.max_context_length = self.model.config.max_position_embeddings
+        else:
+            self.max_context_length = self.model.config.text_config.max_position_embeddings
 
         if self.verbose:
             print("Model loading time: {}h {}m {}s".format(*secs_2_hms(end_time-start_time)))
@@ -148,6 +148,7 @@ class HuggingFaceModel(Model):
         *args, **kwargs
     ):
         messages = messages[:]
+        messages[-1]['content'] += query_string
 
         if self.base_model_template:
             if assistant_label is None:
@@ -164,7 +165,7 @@ class HuggingFaceModel(Model):
         else:
             formatted_prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-        formatted_prompt += query_string
+        # formatted_prompt += query_string # query string in assistant
 
         if self.verbose:
             print(f">>> {self.__class__}.predict")
@@ -188,7 +189,9 @@ class HuggingFaceModel(Model):
         else:
             inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)
 
-            assert inputs['input_ids'].numel() <= self.max_context_length
+
+            if inputs['input_ids'].numel() > self.max_context_length:
+                warnings.warn(f"Input ({inputs['input_ids'].numel()}) exceeds max context length of {self.max_context_length}.")
 
             # token match
             output = self.model.generate(
@@ -199,7 +202,6 @@ class HuggingFaceModel(Model):
             )
 
             _, generation, lprobs = self.parse_hf_outputs(output=output, answers=answers)
-
 
         if self.verbose:
             print(f"-(generation)->{generation}")
@@ -249,7 +251,8 @@ class HuggingFaceModel(Model):
             )
             input_ids = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device).input_ids
 
-            assert input_ids.numel() <= self.max_context_length
+            if input_ids.numel() > self.max_context_length:
+                warnings.warn(f"Input ({input_ids.numel()}) exceeds max context length of {self.max_context_length}.")
 
             assert all([w.upper() in stop_words_up for w in stop_words])
             stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stop_words_up, self.tokenizer, input_ids)])
@@ -290,7 +293,9 @@ class HuggingFaceModel(Model):
             response = outputs[0].outputs[0].text
 
         else:
-            assert input_ids.numel() <= self.max_context_length
+            if input_ids.numel() > self.max_context_length:
+                warnings.warn(f"Input ({input_ids.numel()}) exceeds max context length of {self.max_context_length}.")
+
             output_seq = self.model.generate(
                 input_ids=input_ids,
                 **generation_args,
@@ -312,20 +317,17 @@ class LLama3Model(HuggingFaceModel):
     def __init__(self, *args, **kwargs):
         super(LLama3Model, self).__init__(*args, **kwargs)
 
-        if self.use_vllm:
-            self.generation_args["stop_token_ids"] = [
-                self.tokenizer.eos_token_id,
-                self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
-            ]
-        else:
-            self.generation_args["eos_token_id"] = [
-                self.tokenizer.eos_token_id,
-                self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
-            ]
+        self.generation_args["eos_token_id"] = [
+            self.tokenizer.eos_token_id,
+            self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
+        ]
 
 
-from mistral_common.tokens.instruct.normalize import ChatCompletionRequest
-from mistral_common.protocol.instruct.messages import AssistantMessage, UserMessage
+try:
+    from mistral_common.tokens.instruct.normalize import ChatCompletionRequest
+    from mistral_common.protocol.instruct.messages import AssistantMessage, UserMessage
+except:
+    ...
 
 def to_mistral_msg(msg):
 
@@ -335,6 +337,13 @@ def to_mistral_msg(msg):
         return AssistantMessage(content=msg['content'])
     else:
         raise ValueError(f"Undefined message role {msg['role']}")
+
+
+class MistralSmallInstruct2409Model(HuggingFaceModel):
+
+    def __init__(self, *args, **kwargs):
+        super(MistralSmallInstruct2409Model, self).__init__(*args, **kwargs)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 
 
 class Mixtral8x22BModel(HuggingFaceModel):

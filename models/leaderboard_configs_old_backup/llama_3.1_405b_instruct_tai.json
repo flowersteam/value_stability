@@ -1,0 +1,14 @@
+{
+  "model_class": "TogetherAIModel",
+  "model_id": "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {},
+  "tokenizer_load_args": {},
+  "generation_args": {
+    "max_tokens": 100,
+    "n": 1,
+    "temperature": 0.7,
+    "stop": ["<|eot_id|>"]
+  }
+}

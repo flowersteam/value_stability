@@ -1,0 +1,19 @@
+{
+  "model_class": "HuggingFaceModel",
+  "model_id": "/lustre/fsn1/projects/rech/imi/utu57ed/.cache/huggingface/hub/models--tencent--Tencent-Hunyuan-Large/snapshots/1779e4dfe7f0dde24fec58ff582f0a12c82a72aa/Hunyuan-A52B-Instruct",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {
+    "device_map": "auto"
+  },
+  "tokenizer_load_args": {
+    "pretrained_model_name_or_path": "/lustre/fsn1/projects/rech/imi/utu57ed/.cache/huggingface/hub/Tencent-Hunyuan-Large/models",
+    "use_fast": false,
+    "trust_remote_code": true
+  },
+  "generation_args": {
+    "max_new_tokens": 100,
+    "do_sample": true,
+    "temperature": 0.7
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "_comment": "run with run_vllm_model_leaderboard.sh <model_id>",
+  "model_path": "/lustre/fsn1/projects/rech/imi/utu57ed/.cache/huggingface/hub/models--Qwen--QwQ-32B/snapshots/976055f8c83f394f35dbd3ab09a285a984907bd0",
+  "model_class": "QwQReasoningVllmModel",
+  "model_id": "model",
+  "system_message": true,
+  "base_model_template": false,
+  "load_args": {},
+  "generation_args": {
+    "max_generation_tokens": 100,
+    "n": 1,
+    "temperature": 0.7
+  }
+}

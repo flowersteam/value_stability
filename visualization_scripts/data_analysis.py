@@ -5,6 +5,7 @@ import warnings
 import random
 import glob
 from pprint import pprint
+import scipy.stats as ss
 
 import matplotlib.pyplot as plt
 import re
@@ -21,12 +22,55 @@ from sklearn.manifold import MDS
 import pandas as pd
 import pingouin as pg
 
+from data_analysis_utils import *
 
 label_parser = lambda d: d.split("/")[-1].split("_202")[0]
 
+chunk_labels = [
+    'chunk_0',
+    'chunk_1',
+    'chunk_2',
+    'chunk_3',
+    'chunk_4',
+    'chunk_chess_0',
+    'chunk_grammar_1',
+    'chunk_no_conv',
+    'chunk_svs_no_conv'
+]
+
+
+def load_item_value_dicts(data_dir):
+    profile_values_idx_json = os.path.join(os.path.join(data_dir, "raw"), "values.json")
+
+    with open(profile_values_idx_json) as f:
+        value_2_items_dict = json.load(f)
+
+    value_2_items_dict = {k: np.array(v) - 1 for k, v in value_2_items_dict.items() if k != "_comment"}
+
+    # reverse the dict
+    item_2_value_dict = {}
+    for v, items in value_2_items_dict.items():
+        for it in items:
+            item_2_value_dict[it] = v
+    return value_2_items_dict, item_2_value_dict
+
+def find_max_rank_distance(theoretical_ranks_in_order):
+    distances = []
+    from itertools import permutations
+    for order in list(permutations(range(10))):
+        order = np.array(order)
+        rank_distance_ccw = circular_rank_distance(order, theoretical_ranks_in_order)
+        order = -order + 10
+        order[0] = 0
+        rank_distance_cw = circular_rank_distance(order, theoretical_ranks_in_order)
+        distance = np.minimum(rank_distance_cw, rank_distance_ccw)
+        distances.append(distance)
+    return np.max(distances) # 3.4
+
+
 def conduct_cfa(dir_2_data, test_set_name):
 
-    SRMRs, RMSEAs, CFIs, TLIs = {}, {}, {}, {}
+    SRMRs, RMSEAs, CFIs, TLIs = defaultdict(dict), defaultdict(dict), defaultdict(dict), defaultdict(dict)
 
     for dir in dir_2_data.keys():
 
@@ -45,32 +89,47 @@ def conduct_cfa(dir_2_data, test_set_name):
         import subprocess
         # Run the R script
         questionnare = "SVS" if "svs" in dir else "PVQ"
-        result = subprocess.run(["Rscript", "cfa.R", 'dummy_data.csv', questionnare], capture_output=True, text=True)
 
-        # Check if the script ran successfully
-        if result.returncode != 0:
-            CFIs[dir] = 0
-            TLIs[dir] = 0
-            SRMRs[dir] = 1
-            RMSEAs[dir] = 1
-            print(result.stderr)
-        else:
+        # magnifying glass CFA
+        for high_level_value in ["conservation", "openness_to_change", "self_transcendence", "self_enhancement"]:
+            result = subprocess.run(["Rscript", "cfa.R", 'dummy_data.csv', questionnare, high_level_value], capture_output=True, text=True)
 
-            try:
-                # Parse the JSON output from R
-                fit_indices = json.loads(result.stdout)
-                print(f"D: {dir}")
-                print(fit_indices)
+            # Check if the script ran successfully
+            if result.returncode != 0:
+                CFIs[dir][high_level_value] = 0
+                TLIs[dir][high_level_value] = 0
+                SRMRs[dir][high_level_value] = 1
+                RMSEAs[dir][high_level_value] = 1
+                print("Error in cfa.R")
+                print(result.stderr)
+                print("CFA model was not able to fit properly. Metrics are set to failure values.")
 
-                CFIs[dir] = fit_indices["cfi"][0]
-                TLIs[dir] = fit_indices["tli"][0]
-                SRMRs[dir] = fit_indices["srmr"][0]
-                RMSEAs[dir] = fit_indices["rmsea"][0]
-            except:
-                CFIs[dir] = 0
-                TLIs[dir] = 0
-                SRMRs[dir] = 1
-                RMSEAs[dir] = 1
+            else:
+
+                try:
+                    # Parse the JSON output from R
+                    fit_indices = json.loads(result.stdout)
+
+                    # print(f"D: {dir} ({high_level_value})")
+                    # print(fit_indices)
+
+                    CFIs[dir][high_level_value] = fit_indices["cfi"][0]
+                    TLIs[dir][high_level_value] = fit_indices["tli"][0]
+                    SRMRs[dir][high_level_value] = fit_indices["srmr"][0]
+                    RMSEAs[dir][high_level_value] = fit_indices["rmsea"][0]
+
+                except:
+                    CFIs[dir][high_level_value] = 0
+                    TLIs[dir][high_level_value] = 0
+                    SRMRs[dir][high_level_value] = 1
+                    RMSEAs[dir][high_level_value] = 1
+
+                print(f"CFI ({high_level_value}): ", CFIs[dir][high_level_value])
+
+        print(f"D: {dir}")
+        print(f"\tCFI: {np.mean(list(CFIs[dir].values()))}")
+        # print(f"\tSRMR: {np.mean(list(SRMRs[dir].values()))}")
+        # print(f"\tRMSEA: {np.mean(list(RMSEAs[dir].values()))}")
 
     return SRMRs, RMSEAs, CFIs, TLIs
 
@@ -109,17 +168,17 @@ def plot_pairwise_correlations(correlations_matrix, label_parser=None, title=Non
     ]
 
     parsed_label_order = [
-        "chunk_mix_0",
-        "chunk_0",
-        "chunk_1",
-        "chunk_2",
-        "chunk_3",
-        "chunk_4",
-        "chunk_no_conv",
-        "chunk_chess_0",
-        "chunk_grammar_1",
-        'chunk_grammar_19_msgs_1',
+        'chunk_0',
+        'chunk_1',
+        'chunk_2',
+        'chunk_3',
+        'chunk_4',
+        'chunk_chess_0',
+        'chunk_grammar_1',
+        'chunk_no_conv',
+        'chunk_svs_no_conv'
     ]
+    assert set(parsed_label_order) == set(chunk_labels)
 
     try:
         # order labels based on parsed label order
@@ -168,12 +227,12 @@ def plot_pairwise_correlations(correlations_matrix, label_parser=None, title=Non
             text = ax.text(j, i, matrix[i, j].round(2), ha="center", va="center", color="black")
 
     if title:
-        ax.set_title(title, fontsize=20)
+        ax.set_title(title, fontsize=15)
 
     fig.tight_layout()
     if savepath is not None:
         plt.savefig(savepath)
-        print(f"Saved to {savepath}")
+        print(f"Saved to: {savepath}")
     else:
         plt.show()
 
@@ -207,7 +266,7 @@ def get_model_name(directories):
     for d in directories:
         with open(os.path.join(d, "results.json"), 'r') as f:
             models.append(json.load(f)['args']['engine'])
-    assert set(models) == {models[0]}
+    # assert set(models) == {models[0]}
     return models[0]
 
 
@@ -232,9 +291,9 @@ def load_data(directories):
         with open(results_json_path, 'r') as f:
             dir_data = json.load(f)
 
-
         # parse svs to pvq label
         def svs_2_pvq_dict(d):
+            # print("Parsing svs test_set_name to pvq_auto")
 
             new = {}
             for k, v in d.items():
@@ -497,7 +556,8 @@ def compute_value_structure(dir_2_data, keys):
     print(colored("--------------------------------------------------", "green"))
 
     # fit SSA
-    theoretical_ranks = [
+    theoretical_values_structure = [
+        # value, rank
         ('Self-Direction', 1),
         ('Stimulation', 2),
         ('Hedonism', 3),
@@ -510,8 +570,49 @@ def compute_value_structure(dir_2_data, keys):
         ('Universalism', 10)
     ]
 
-    theoretical_values_in_order = [v[0] for v in theoretical_ranks]
-    theoretical_ranks_in_order = [v[1] for v in theoretical_ranks]
+    theoretical_values_locations_dict = {
+        'Self-Direction': (-0.34, 0.94),
+        'Stimulation': (-0.87, 0.50),
+        'Hedonism': (-0.98, -0.17),
+        'Achievement': (-0.64, -0.77),
+        'Power': (0.00, -1.00),
+        'Security': (0.65, -0.77),
+        'Conformity': (0.49, -0.09),
+        'Tradition': (0.98, -0.17),
+        'Benevolence': (0.87, 0.50),
+        'Universalism': (0.34, 0.94)
+    }
+    theoretical_values_colors = {
+        'Self-Direction': "green",
+        'Stimulation': "lawngreen",
+        'Hedonism': "olivedrab",
+
+        'Achievement': "lightcoral",
+        'Power': "red",
+
+        'Security': "dodgerblue",
+        'Conformity': "skyblue",
+        'Tradition': "blue",
+
+        'Benevolence': "blueviolet",
+        'Universalism': "mediumorchid"
+    }
+    # theoretical_values_colors = {
+    #     'Self-Direction': "green",
+    #     'Stimulation': "black",
+    #     'Hedonism': "brown",
+    #     'Achievement': "darkorange",
+    #     'Power': "red",
+    #     'Security': "gold",
+    #     'Conformity': "skyblue",
+    #     'Tradition': "blue",
+    #     'Benevolence': "blueviolet",
+    #     'Universalism': "deeppink"
+    # }
+
+    theoretical_values_in_order = [v[0] for v in theoretical_values_structure]
+    theoretical_ranks_in_order = [v[1] for v in theoretical_values_structure]
+
 
     directories = list(dir_2_data.keys())
 
@@ -520,127 +621,154 @@ def compute_value_structure(dir_2_data, keys):
     intercorrelations = {}
     rs = {}
     angles = {}
-    per_dir_structure_correlations = {}
+    per_dir_rank_distances = {}
+    per_dir_stress = {}
+    per_dir_separability = {}
+    data_mds = {}
+    item_inds = {}
+
+    value_2_items_dict, item_2_value_dict = {}, {}
+
     for dir in directories:
 
         # compute intercorrelations
         intercorrelations[dir] = defaultdict(dict)
 
-        for key in keys:
-            intercorrelations[dir][key][key] = 1.0
+        value_2_items_dict[dir], item_2_value_dict[dir] = load_item_value_dicts(dir_2_data[dir]['args']['data_dir'])
 
-        for key_1, key_2 in key_pairs:
-
-            scores_1 = np.array([d[test_set_name][key_1] for d in dir_2_data[dir]["per_simulated_participant_metrics"]])
-            scores_2 = np.array([d[test_set_name][key_2] for d in dir_2_data[dir]["per_simulated_participant_metrics"]])
-
-            # not for CFA as it makes them dependant
-            # if "pvq" in test_set_name or "svs" in test_set_name:
-            #     scores_1 = per_part_normalized_scores(dir_2_data, dir, test_set_name, key_1)
-            #     scores_2 = per_part_normalized_scores(dir_2_data, dir, test_set_name, key_2)
-
-            correlation = compute_correlation(scores_1, scores_2)
-
-            intercorrelations[dir][key_1][key_2] = correlation
-            intercorrelations[dir][key_2][key_1] = correlation
-
-        if args.print_intercorrelations:
-            print(f"D: {dir}")
-            print("\t"+"".join([f"{k:.4s}\t" for k in keys]))
+        value_based_plot = False
+        if value_based_plot:
             for key in keys:
-                print(f"{key:.5s}\t", end="")
-                for key_ in keys:
-                    print(f"{intercorrelations[dir][key][key_]:.2f}\t", end="")
-                print()
+                intercorrelations[dir][key][key] = 1.0
 
-        # compute the structure corrleation
-        data = np.array([[intercorrelations[dir][v1][v2] for v2 in theoretical_values_in_order] for v1 in theoretical_values_in_order])
+            for key_1, key_2 in key_pairs:
 
-        # data = (n_samples, n_features)
-        # from IPython import embed; embed();
-        # from sklearn.decomposition import FactorAnalysis
-        from factor_analyzer import calculate_bartlett_sphericity, calculate_kmo
-        from factor_analyzer import Rotator
-        # from factor_analyzer import ConfirmatoryFactorAnalyzer
-        # model = ConfirmatoryFactorAnalyzer(n_factors=3,
-        #                                    method='ml',
-        #                                    rotate='varimax')
+                scores_1 = np.array([d[test_set_name][key_1] for d in dir_2_data[dir]["per_simulated_participant_metrics"]])
+                scores_2 = np.array([d[test_set_name][key_2] for d in dir_2_data[dir]["per_simulated_participant_metrics"]])
 
-        # data_pca = PCA(n_components=2).fit_transform(data)
-        data = StandardScaler().fit_transform(data)  # scaling the data
-        data_pca = FactorAnalysis(rotation="varimax", n_components=2).fit_transform(data)
+                # no centralization for CFA as it makes them dependant
+                correlation = compute_correlation(scores_1, scores_2)
 
-        # data_pca = MDS(n_components=2).fit_transform(data)
-        # data_pca = MDS(n_components=2).fit_transform(data)
+                intercorrelations[dir][key_1][key_2] = correlation
+                intercorrelations[dir][key_2][key_1] = correlation
 
-        data_complex = data_pca[:, 0] + data_pca[:, 1]*1j
+            if args.print_intercorrelations:
+                print(f"D: {dir}")
+                print("\t"+"".join([f"{k:.4s}\t" for k in keys]))
+                for key in keys:
+                    print(f"{key:.5s}\t", end="")
+                    for key_ in keys:
+                        print(f"{intercorrelations[dir][key][key_]:.2f}\t", end="")
+                    print()
+
+            # compute the rank distances
+            data = np.array([[intercorrelations[dir][v1][v2] for v2 in theoretical_values_in_order] for v1 in theoretical_values_in_order])
+            init_configuration = np.array([theoretical_values_locations_dict[v] for v in theoretical_values_in_order])
+
+        else:
+            # item based plot
+
+            # (n_pop, n_items)
+            per_item_scores = np.array([np.array(d[test_set_name])[:, 1].astype(float) for d in dir_2_data[dir]["answers"]])
+            # n_items = per_item_scores.shape[1]
+            item_inds[dir] = sorted(list(map(int,item_2_value_dict[dir].keys())))
+
+            for it_i in item_inds[dir]:
+                intercorrelations[dir][it_i][it_i] = 1.0
+
+            for it_1, it_2 in itertools.combinations(item_inds[dir], 2):
+
+                # no centralization for CFA as it makes them dependant
+                correlation = compute_correlation(per_item_scores[:, it_1], per_item_scores[:, it_2], override_nans=True)
+
+                intercorrelations[dir][it_1][it_2] = correlation
+                intercorrelations[dir][it_2][it_1] = correlation
+
+            # compute the rank distances
+            data = np.array([[intercorrelations[dir][i1][i2] for i2 in item_inds[dir]] for i1 in item_inds[dir]])
+
+            init_configuration = np.array([
+                theoretical_values_locations_dict[item_2_value_dict[dir][it_i]] for it_i in item_inds[dir]
+            ])
+
+        def fit_mds(data, init):
+            # MDS
+            mds = MDS(n_components=2, normalized_stress=True, metric=False)
+            mds.fit(data, init=init)
+
+            # sklearn Stress
+            print(f"normalized stress : {mds.stress_}")
+            return mds.embedding_, mds.stress_
+
+        data_mds[dir], stress = fit_mds(data, init=init_configuration)
+
+        per_dir_stress[dir] = stress
+
+        labels = [item_2_value_dict[dir][it_i] for it_i in item_inds[dir]]
+        acc = classify_dots(data, labels)
+        per_dir_separability[dir] = acc
+
+        if value_based_plot:
+            values_mds = data_mds[dir]
+
+        else:
+            values_mds = []
+            # some items are not used (in svs)
+            assert len(item_inds[dir]) == len(data)
+            item_ind_2_data_ind = dict(zip(item_inds[dir], range(len(data))))
+
+            for v in theoretical_values_in_order:
+                # value location is the center of corresponding items
+                indices = [item_ind_2_data_ind[i] for i in value_2_items_dict[dir][v]]
+                mean_v = np.mean(data_mds[dir][indices, :], axis=0)
+                values_mds.append(mean_v)
+
+            values_mds = np.array(values_mds)
+
+        # CCW
+        data_complex = values_mds[:, 0] + values_mds[:, 1]*1j
         rs[dir] = np.abs(data_complex)
         angles[dir] = np.angle(data_complex)
         angles[dir] -= angles[dir][0]  # Self-Direction angle is 0
         angles[dir] += (angles[dir] < 0) * 2*np.pi
-        # angles *= -1
 
-        # correlation with the theoretical order (clockwise or counterclockwise)
+        rank_distance_ccw = circular_rank_distance(angles[dir], theoretical_ranks_in_order)
 
-        # def highest_correlation(angles, theoretical_ranks):
-        #
-        #     angles = np.array(angles)
-        #     theoretical_ranks = np.array(theoretical_ranks)
-        #     all_possible_correlations = []
-        #     for i in range(len(theoretical_ranks)):
-        #         all_possible_correlations.extend([
-        #             compute_correlation(angles, theoretical_ranks),
-        #             compute_correlation(-angles, theoretical_ranks)
-        #         ])
-        #
-        #         if i < len(theoretical_ranks) - 1:
-        #             # prepare for next iteration
-        #             # rotate - (i-th is the last one, i+1-th is the first one)
-        #             angles[i] += 2*np.pi
-        #
-        #             if angles[i+1] == 0:
-        #                 # special case of conformity and tradition
-        #                 angles[i+1] += 2*np.pi
-        #
-        #             else:
-        #                 angles -= angles[i+1]
-        #
-        #             theoretical_ranks[i] += len(theoretical_ranks)
-        #
-        #             if theoretical_ranks[i+1] == 1:
-        #                 # special case of conformity and tradition
-        #                 theoretical_ranks[i+1] += len(theoretical_ranks)
-        #             else:
-        #                 theoretical_ranks -= theoretical_ranks[i+1]
-        #
-        #     return np.max(all_possible_correlations)
-
-        # correlation_with_theory = highest_correlation(angles[dir], theoretical_ranks_in_order)
-        # correlation_with_theory = compute_correlation(angles[dir], theoretical_ranks_in_order)
-
-        correlation_with_theory_ccw = compute_correlation(angles[dir], theoretical_ranks_in_order)
-
-        data_complex = -1*data_pca[:, 0] + data_pca[:, 1]*1j
+        # CW
+        data_complex = -1*values_mds[:, 0] + values_mds[:, 1]*1j
         rs[dir] = np.abs(data_complex)
         angles[dir] = np.angle(data_complex)
         angles[dir] -= angles[dir][0]  # Self-Direction angle is 0
         angles[dir] += (angles[dir] < 0) * 2*np.pi
-        correlation_with_theory_cw = compute_correlation(angles[dir], theoretical_ranks_in_order)
 
-        correlation_with_theory = np.maximum(correlation_with_theory_cw, correlation_with_theory_ccw)
+        rank_distance_cw = circular_rank_distance(angles[dir], theoretical_ranks_in_order)
 
+        # Max(CCW, CW)
+        rank_distance = np.minimum(rank_distance_ccw, rank_distance_cw)
 
-        per_dir_structure_correlations[dir] = correlation_with_theory
+        assert len(theoretical_ranks_in_order) == 10
 
-    mean_structure_correlation = np.mean(list(per_dir_structure_correlations.values()))
-    print(f"Mean structure correlation: {mean_structure_correlation:.4f}.")
+        # assumes 10 values, and that we take the max of cw and ccw order
+        # calculated using the find_max_rank_distance function
+        max_rank_distance = 3.4
+
+        rank_distance = rank_distance / max_rank_distance
+
+        per_dir_rank_distances[dir] = rank_distance
+
+    mean_rank_distance = np.mean(list(per_dir_rank_distances.values()))
+    mean_stress = np.mean(list(per_dir_stress.values()))
+    mean_separability = np.mean(list(per_dir_separability.values()))
+
+    print(f"Mean rank distance: {mean_rank_distance:.4f}.")
+    print(f"Mean stress: {mean_stress:.4f}.")
 
     if args.plot_structure:
         num_dirs = len(directories)
-        num_cols = 3  # Number of columns for subplots
+        num_cols = 5  # Number of columns for subplots
         num_rows = int(np.ceil((num_dirs+1) / num_cols))  # Number of rows for subplots
 
-        fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 5 * num_rows))
+        fig, axes = plt.subplots(num_rows, num_cols, figsize=(5 * num_cols, 5 * num_rows))
         axes = axes.flatten()  # Flatten to easily index with a single loop
 
         # plot theoretical structure
@@ -649,54 +777,66 @@ def compute_value_structure(dir_2_data, keys):
         theoretical_angles = [((r - 1) / 10) * 2 * np.pi for r in theoretical_ranks_in_order]
 
         theoretical_rs = [1] * len(theoretical_values_in_order)
-        # equally separated angles (but conf and trad are the same angle)
+        # conf and trad are the same angle, so make trad further away from the center
         theoretical_rs[theoretical_values_in_order.index("Conformity")] = 0.8
         theoretical_rs[theoretical_values_in_order.index("Tradition")] = 1.2
 
-        def plot_structure(ax, angles, rs, title=None, color=None, labels=None):
-
-            # make self-direction top
-            theor_complex_rot = rs * np.exp(1j * (np.array(angles) + np.pi / 2))
-            coords = np.column_stack([theor_complex_rot.real, theor_complex_rot.imag])
-
-            ax.scatter(x=coords[:, 0], y=coords[:, 1], color=color)
-            for dot in coords:
-                ax.plot([0, dot[0]], [0, dot[1]], color="gray", linewidth=1)
-
-            if labels:
-                for i, v in enumerate(labels):
-                    ax.annotate(v, coords[i], fontsize=9)
-
-            ax.set_title(title, y=1.05, fontsize=15)
-
-        # plot_structure(
-        #     ax=ax,
-        #     angles=theoretical_angles, rs=theoretical_rs, labels=theoretical_values_in_order,
-        #     title="Theoretical order", color="green"
-        # )
+        plot_structure(
+            ax=ax,
+            angles=theoretical_angles, rs=theoretical_rs, labels=theoretical_values_in_order,
+            title="Theoretical order",
+            # color="green",
+            colors=[theoretical_values_colors[v] for v in theoretical_values_in_order],
+            s=30
+        )
         # plot other structures
 
         for i, dir in enumerate(directories):
-            # idx = i + 1
-            idx = i
+            # idx = i # no theoretical
+            idx = i + 1
 
             ax = axes[idx]
-            plot_structure(
-                ax=ax,
-                angles=angles[dir], rs=rs[dir], labels=theoretical_values_in_order,
-                title=f"{label_parser(dir)} (r={per_dir_structure_correlations[dir]:.3f})"
-            )
+
+            if value_based_plot:
+                plot_structure(
+                    ax=ax,
+                    angles=angles[dir], rs=rs[dir], labels=theoretical_values_in_order,
+                    colors=[theoretical_values_colors[v] for v in theoretical_values_in_order],
+                    # title=f"{label_parser(dir)} (st={per_dir_stress[dir]:.3f}; sep={per_dir_separability[dir]:.3f})",
+                    title=f"{label_parser(dir)} (stress={per_dir_stress[dir]:.3f})",
+                    rays=True, fontsize=9,
+                )
+            else:
+                values_labels = [item_2_value_dict[dir][item_inds[dir][i]] for i in range(len(data_mds[dir]))]
+                plot_structure(
+                    ax=ax, coords=data_mds[dir],
+                    # labels=values_labels,
+                    colors=[theoretical_values_colors[v] for v in values_labels],
+                    title=f"{label_parser(dir)} (stress={per_dir_stress[dir]:.3f})",
+                    # title=f"{label_parser(dir)} (st={per_dir_stress[dir]:.3f}; sep={per_dir_separability[dir]:.3f})",
+                    rays=False, fontsize=6, s=10
+                )
 
         # Hide any empty subplots
         for j in range(idx + 1, len(axes)):
             fig.delaxes(axes[j])
 
-        plt.tight_layout()
-        plt.subplots_adjust(wspace=0.35, hspace=0.35, top=0.9, bottom=0.1, left=0.2, right=0.8)
-        plt.suptitle(f"{dir_2_data[directories[0]]['args']['engine']} (r={mean_structure_correlation:.3f})", fontsize=20)
-        plt.show()
+        plt.subplots_adjust(wspace=0.35, hspace=0.45, top=0.8, bottom=0.1, left=0.05, right=0.95)
+        # plt.suptitle(f"{dir_2_data[directories[0]]['args']['engine']} (st={mean_stress:.3f}; sep={mean_separability:.3f})", fontsize=30)
+        plt.suptitle(f"{dir_2_data[directories[0]]['args']['engine']} (st={mean_stress:.3f})", fontsize=30)
 
-    return mean_structure_correlation, per_dir_structure_correlations, intercorrelations
+        if args.plot_save:
+            for ext in ["svg"]:
+                savepath = f"{per_model_analysis_results_dir}/structure.{ext}"
+                plt.savefig(savepath)
+                print(f"Saved to: {savepath}")
+        else:
+            plt.show()
+
+    return mean_rank_distance, per_dir_rank_distances,\
+        mean_stress, per_dir_stress, \
+        mean_separability, per_dir_separability, \
+        intercorrelations
 
 def compute_cronbach_alpha(dir_2_data, keys):
 
@@ -809,7 +949,7 @@ def plot_values(part_scores, keys, ips_part_stabilities=None, ips_part_dir_stabi
     return mean_rank_order_stability
 
 
-def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_stabilities=None):
+def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_stabilities=None, title=None):
 
     # extract data
     directories = list(dir_2_data.keys())
@@ -839,7 +979,6 @@ def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_s
 
     # # take the most stable one as ref
     dir_stabilities = None
-
 
     # most stable dir/key on average (a good proxy to show overall correlations of everything)
     ref_key = max(key_rank_order_stabilities, key=key_rank_order_stabilities.get)
@@ -897,15 +1036,18 @@ def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_s
             reordered_names = [n['name'] for n in reordered_names]
 
             # filter only salient names
-            if set(names_to_plot).intersection(set(reordered_names)):
-                ticks, pers_labels = zip(*[(t, l) for t, l in enumerate(reordered_names) if l in names_to_plot])
-            else:
-                ticks, pers_labels = [], []
+            ticks, pers_labels = zip(*[(t, l) for t, l in enumerate(reordered_names)])
+            # if set(names_to_plot).intersection(set(reordered_names)):
+            #     ticks, pers_labels = zip(*[(t, l) for t, l in enumerate(reordered_names) if l in names_to_plot])
+            #
+            # else:
+            #     ticks, pers_labels = [], []
 
 
             # axs[key_i][dir_i].scatter(xs, ys, s=1)
+
             axs[key_i*n_dirs + dir_i].plot(xs, ys, linewidth=1)
-            axs[key_i*n_dirs + dir_i].set_xticks(ticks, pers_labels, rotation=90, fontsize=8)
+            axs[key_i*n_dirs + dir_i].set_xticks(ticks, pers_labels, rotation=90, fontsize=6)
 
             bad_guys = ["Gollum", "Sauron", "Saruman", "Smaug", "Morgoth", "Shelob", "Gríma Wormtongue", "Ungoliant", "Thuringwethil", "Durin's Bane", "Lungorthin"]
             good_guys = ["Gandalf", "Aragorn", "Celeborn", "Galadriel", "Tom Bombadil", "Elrond", "Frodo Baggins", "Finrod Felagund", "Glorfindel", "Goldberry", "Bilbo Baggins", "Faramir", "Éowyn", "Samwise Gamgee", "Fëanor", "Théoden", "Boromir", "Túrin Turambar", "Thranduil", "Beorn", "Arwen", "Halbarad", "Fingon", "Fingolfin", "Celebrimbor", "Gil - galad", "Meriadoc Brandybuck", "Treebeard", "Radagast", "Elendil", "Éomer", "Legolas", "Húrin", "Thorin Oakenshield", "Peregrin Took", "Thingol", "Eärendil", "Elwing", "Lúthien", "Beren", "Tuor", "Idril", "Finwë", "Míriel", "Melian", "Balin", "Gimli"]
@@ -922,8 +1064,6 @@ def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_s
 
             if key == ref_key and dir == ref_dir:
 
-                # bold border
-                # for spine in axs[key_i*n_dirs + dir_i].spines.values(): spine.set_linewidth(1.5)
 
                 # background
                 axs[key_i*n_dirs + dir_i].set_facecolor('lightgray')
@@ -934,36 +1074,54 @@ def plot_population(dir_2_data, keys, key_rank_order_stabilities=None, key_dir_s
 
             if key_i == 0:
                 # first row
-                # axs[key_i*n_dirs + dir_i].set_title(lab + f" (r={dir_stabilities[dir]:.2f})" if dir_stabilities else "")
                 axs[key_i*n_dirs + dir_i].set_title(lab)
 
-    fig.suptitle(f"{dir_2_data[dir]['args']['experiment_name']} - {dir_2_data[dir]['args']['engine']} ", fontsize=16)
-    # plt.subplots_adjust(left=0.08, right=0.99, top=0.90, bottom=0.01, hspace=0.05, wspace=0.1)
+    if title:
+        fig.suptitle(title, fontsize=50)
     plt.subplots_adjust(left=0.08, right=0.99, top=0.90, bottom=0.1, hspace=0.65, wspace=0.1)
 
     return mean_rank_order_stability
 
 
 warnings.filterwarnings('error', category=ConstantInputWarning)
-def compute_correlation(scores_1, scores_2):
+
+def circular_rank_distance(values_1, values_2):
+    ranks_1 = ss.rankdata(values_1)
+    ranks_1_prev = ranks_1 - len(ranks_1)
+    ranks_1_next = ranks_1 + len(ranks_1)
+
+    ranks_2 = ss.rankdata(values_2)
+
+    distances = np.abs(np.array([
+        ranks_2 - ranks_1_prev,
+        ranks_2 - ranks_1,
+        ranks_2 - ranks_1_next
+    ])).min(axis=0)
+
+
+    return distances.mean()
+
+
+
+def compute_correlation(scores_1, scores_2, override_nans=False):
 
     try:
         correlation, _ = spearmanr(scores_1, scores_2)
         return correlation
 
     except ConstantInputWarning:
-        return np.nan
+        if override_nans:
+            # not ideal but no other way (used for plotting)
+            if len(set(scores_1)) == 1 and len(set(scores_2)) == 1:
+                # both constant -> correlations is 1
+                return 1.0
+            else:
+                # one constant  -> correlation is 0 (happens very rarely, in ipsative)
+                return 0.0
 
-        # # # not ideal but no other way
-        # if len(set(scores_1)) == 1 and len(set(scores_2)) == 1:
-        #     # both constant
-        #     return np.nan
-        # else:
-        #     # one constant  -> correlation is 0 (happens very rarely, in ipsative)
-        #     return 0.0
-        #     # return np.nan
-        #     # print(f"Collapse setting 0.")
-        #     # return np.nan
+        else:
+            return np.nan
+
 
 
 
@@ -1053,6 +1211,7 @@ def print_correlation_stats(cs, header=False, label="\t", color=None):
 
 
 if __name__ == '__main__':
+
     import argparse
 
     # normalized_evaluation_data = []
@@ -1068,15 +1227,13 @@ if __name__ == '__main__':
     parser.add_argument('--cronbach-alpha', action="store_true")
     parser.add_argument('--plot-matrix', action="store_true")
     parser.add_argument('--print-intercorrelations', action="store_true")
-    parser.add_argument('--save-plot-matrix', action="store_true")
     parser.add_argument('--plot-save', '-ps', action="store_true")
     parser.add_argument('--no-ignore', action="store_true")
     parser.add_argument('--separate_legend', action="store_true")
     parser.add_argument('--plot-ranks', "-pr", action="store_true")
     parser.add_argument('--plot-ips', "-pi", action="store_true")
     parser.add_argument('--plot-mean', "-pm", action="store_true")
-    parser.add_argument('--plot-dont-show', "-pds", action="store_true")
-    parser.add_argument('--filename', type=str, default="hobbies_pvq")
+    parser.add_argument('--filename', type=str, default="image")
     parser.add_argument('--assert-n-dirs', type=int, default=None)
     parser.add_argument('--result-json-stdout', action="store_true")
     parser.add_argument('--result-json-savepath', default=None)
@@ -1134,6 +1291,9 @@ if __name__ == '__main__':
         raise ValueError(f"Wrong number of dirs found {len(directories)} != {args.assert_n_dirs}.")
 
     dir_2_data = load_data(directories)
+    model_name = get_model_name(directories)
+    per_model_analysis_results_dir = f"Leaderboard/data_analysis/per_model/{model_name}"
+    os.makedirs(per_model_analysis_results_dir, exist_ok=True)
 
     test_set_name = extract_test_set_name(dir_2_data)
     test_set_values = extract_test_set_values(dir_2_data)
@@ -1155,16 +1315,38 @@ if __name__ == '__main__':
 
     if args.structure:
         # compute structure
-        structure_correlation, structure_correlations, intercorrelations = compute_value_structure(dir_2_data=dir_2_data, keys=keys)
+        rank_distance, all_rank_distance, stress, all_stress, separability, all_separability, intercorrelations = compute_value_structure(
+            dir_2_data=dir_2_data, keys=keys)
     else:
-        structure_correlation, structure_correlations, intercorrelations = None, None, None
+        rank_distance, all_rank_distance, stress, all_stress, separability, all_separability, intercorrelations = None, None, None, None, None, None, None
 
     if args.cfa:
-        SRMRs, RMSEAs, CFIs, TLIs = conduct_cfa(dir_2_data=dir_2_data, test_set_name=test_set_name)
-        CFI = np.mean(list(CFIs.values()))
-        TLI = np.mean(list(TLIs.values()))
-        SRMR = np.mean(list(SRMRs.values()))
-        RMSEA = np.mean(list(RMSEAs.values()))
+        all_SRMR, all_RMSEA, all_CFI, all_TLI = conduct_cfa(dir_2_data=dir_2_data, test_set_name=test_set_name)
+
+        def aggregate_cfa_metrics(metrics):
+            assert set([ch.split("/")[-1].split("_202")[0] for ch in metrics.keys()]) == set(chunk_labels)
+            per_dir_metric = {label_parser(ch_name): np.mean(list(ch_metrics.values())) for ch_name, ch_metrics in metrics.items()}
+            mean_metric = np.mean(list(per_dir_metric.values()))
+            return per_dir_metric, mean_metric
+
+
+        per_chunk_CFI, CFI = aggregate_cfa_metrics(all_CFI)
+        per_chunk_TLI, TLI = aggregate_cfa_metrics(all_TLI)
+        per_chunk_SRMR, SRMR = aggregate_cfa_metrics(all_SRMR)
+        per_chunk_RMSEA, RMSEA = aggregate_cfa_metrics(all_RMSEA)
+
+        cfa_metrics_df = pd.DataFrame({
+            'CFI': per_chunk_CFI,
+            'TLI': per_chunk_TLI,
+            'SRMR': per_chunk_SRMR,
+            'RMSEA': per_chunk_RMSEA,
+        })
+
+        cfa_savepath = f"{per_model_analysis_results_dir}/cfa_metrics.csv"
+        cfa_metrics_df.to_csv(cfa_savepath, index_label="Context chunk")
+        print(cfa_metrics_df)
+
+        print(f"Saved to: {cfa_savepath}")
 
         print(colored("\n---", "green"))
         print(colored("CFA", "green"))
@@ -1173,11 +1355,10 @@ if __name__ == '__main__':
 
     else:
         SRMR, RMSEA, CFI, TLI = None, None, None, None
-        SRMRs, RMSEAs, CFIs, TLIs = None, None, None, None
+        all_SRMR, all_RMSEA, all_CFI, all_TLI = None, None, None, None
 
 
     if args.plot_matrix:
-        model_name = get_model_name(directories)
 
         # split_path = directories[0].split("/")
         # assert split_path[2] == model_name
@@ -1187,11 +1368,16 @@ if __name__ == '__main__':
         # os.makedirs(matrix_savepath, exist_ok=True)
         # matrix_savepath += "/matrix.json"
 
+        if args.plot_save:
+            savepath = f"{per_model_analysis_results_dir}/matrix.svg"
+        else:
+            savepath=None
+
         plot_pairwise_correlations(
             correlations_matrix=avg_correlation_table,
             label_parser=label_parser,
-            title=model_name,
-            savepath=f"./visualizations/matrix_{model_name}.png" if args.save_plot_matrix else None
+            title=model_name+f" (r={mean_rank_order_stability:.3f})",
+            savepath=savepath
         )
 
     if len(keys) >= 2 and args.ips:
@@ -1280,7 +1466,7 @@ if __name__ == '__main__':
                 dir_2_data, dir_2_data_neutral,
                 value, value,
                 "pvq_auto", "pvq_auto",
-                directories_1=dir_2_data.keys(), directories_2=[neutral_dir]*len(dir_2_data)
+                # directories_1=dir_2_data.keys(), directories_2=[neutral_dir]*len(dir_2_data)
             )
 
             mean_stability.append(stab_)
@@ -1352,13 +1538,14 @@ if __name__ == '__main__':
             "dir_params": {d: dir_2_data[d]['params'] for d in args.directories},
             "Cronbach_alpha": mean_cronbach_alpha,
             "Cronbach_alphas": cronbach_alphas,
-            "Structure_correlation": structure_correlation,
-            "Structure_correlations": structure_correlations,
+            "Stress": stress, "All_Stress": all_stress,
+            "Separability": separability, "All_Separability": all_separability,
+            "Rank_distance": rank_distance, "All_Rank_distance": all_rank_distance,
+            "CFI": CFI, "All_CFI": all_CFI,
+            "TLI": TLI, "All_TLI": all_TLI,
+            "SRMR": SRMR, "All_SRMR": all_SRMR,
+            "RMSEA": RMSEA, "All_RMSEA": all_RMSEA,
             "Intercorrelations": intercorrelations,
-            "CFI": CFI, "CFIs": CFIs,
-            "TLI": TLI, "TLIs": TLIs,
-            "SRMR": SRMR, "SRMRs": SRMRs,
-            "RMSEA": RMSEA, "RMSEAs": RMSEAs,
         }
 
         class NumpyEncoder(json.JSONEncoder):
@@ -1377,32 +1564,30 @@ if __name__ == '__main__':
             print(f"Saved to {args.result_json_savepath}.")
 
     if args.plot_ranks:
-        plot_population(dir_2_data, keys, key_rank_order_stabilities=key_rank_order_stabilities, key_dir_stabilities=key_dir_stabilities)
-
-        if not args.plot_dont_show:
-            plt.show()
+        title = f"{model_name} (r={mean_rank_order_stability:.3f})"
+        plot_population(dir_2_data, keys, key_rank_order_stabilities=key_rank_order_stabilities, key_dir_stabilities=key_dir_stabilities, title=title)
 
         if args.plot_save:
-            # for ext in ["png", "svg"]:
-            for ext in ["png"]:
-                savepath = f"visualizations/{args.filename}.{ext}"
-                print(f"Saved to: {savepath}")
-                # plt.tight_layout()
+            for ext in ["svg"]:
+                plt.subplots_adjust(left=0.05)
+                savepath = f"{per_model_analysis_results_dir}/ranks.{ext}"
                 plt.savefig(savepath, dpi=600)
+                print(f"Saved to: {savepath}")
+        else:
+            plt.show()
 
     if args.plot_ips:
         plot_values(part_scores, keys, ips_part_stabilities=ips_part_stabilities, ips_part_dir_stabilities=ips_part_dir_stabilities)
 
-        if not args.plot_dont_show:
-            plt.show()
-
         if args.plot_save:
             # for ext in ["png", "svg"]:
             for ext in ["png"]:
-                savepath = f"visualizations/{args.filename}.{ext}"
-                print(f"Saved to: {savepath}")
+                savepath = f"{per_model_analysis_results_dir}/ips.{ext}"
                 # plt.tight_layout()
                 plt.savefig(savepath)
+                print(f"Saved to: {savepath}")
+        else:
+            plt.show()
 
     if args.plot_mean:
 
@@ -1412,12 +1597,11 @@ if __name__ == '__main__':
         ax.tick_params(axis='both', which='both', labelsize=30)
 
         if args.plot_save:
-            # for ext in ["png", "svg"]:
             for ext in ["png"]:
-                savepath = f"visualizations/{args.filename}.{ext}"
-                print(f"Saved to: {savepath}")
+                savepath = f"{per_model_analysis_results_dir}/mean.{ext}"
                 # plt.tight_layout()
                 plt.savefig(savepath)
+                print(f"Saved to: {savepath}")
 
                 if args.separate_legend:
                     # create a new figure and axes object for the legend
@@ -1436,11 +1620,11 @@ if __name__ == '__main__':
                     # ax.axis('off')
 
                     # save the legend as a separate image
-                    savepath_legend = f"visualizations/{args.filename}_legend.{ext}"
-                    print(f"Saved legend to: {savepath_legend}")
+                    savepath_legend = f"{per_model_analysis_results_dir}/{args.filename}_legend.{ext}"
                     plt.tight_layout()
                     plt.gca().set_axis_off()
                     plt.savefig(savepath_legend)
+                    print(f"Saved legend to: {savepath_legend}")
 
         else:
             plt.show()

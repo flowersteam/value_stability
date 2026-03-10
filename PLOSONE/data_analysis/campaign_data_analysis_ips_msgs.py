@@ -530,7 +530,7 @@ for j in range(plt_i + 1, num_rows * num_cols):
 
 plt.tight_layout()
 
-fig_path = f'PLOSONE/data_analysis/visualizations/{figure_name}'
+fig_path = f'PLOSONE/data_analysis/visualizations/{figure_name}.pdf'
 print(f"save to: {fig_path}")
 plt.savefig(fig_path)
 

@@ -1,6 +1,17 @@
 import os
 import time
 import numpy as np
+import json
+
+def load_value_2_items_dict(data_dir):
+    profile_values_idx_json = os.path.join(os.path.join(data_dir, "raw"), "values.json")
+
+    with open(profile_values_idx_json) as f:
+        profile_values_idx = json.load(f)
+
+    profile_values_idx = {k: np.array(v) - 1 for k, v in profile_values_idx.items() if k != "_comment"}
+    return profile_values_idx
+
 
 def map_choice_to_number(letter, permutations_dict, offset=1):
     # A-F -> 1-6
@@ -53,15 +64,15 @@ def softmax(x):
     return softmax
 
 
-def get_hf_cache_dir():
-    hostname = os.uname()[1]
-    if hostname == "PTB-09003439":
-        hf_cache_dir = "/home/flowers-user/.cache/huggingface"
-    elif "plafrim" in hostname:
-        hf_cache_dir ="/beegfs/gkovac/hf_cache_dir"
-    else:
-        hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
-    return hf_cache_dir
+# def get_hf_cache_dir():
+#     hostname = os.uname()[1]
+#     if hostname == "PTB-09003439":
+#         hf_cache_dir = "/home/flowers-user/.cache/huggingface"
+#     elif "plafrim" in hostname:
+#         hf_cache_dir ="/beegfs/gkovac/hf_cache_dir"
+#     else:
+#         hf_cache_dir = "/gpfsscratch/rech/imi/utu57ed/.cache/huggingface"
+#     return hf_cache_dir
 
 
 def estimate_and_print_gpt_prices(gpt_tokens_count, engine):

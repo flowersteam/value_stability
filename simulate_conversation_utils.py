@@ -152,10 +152,7 @@ def simulate_conversation(args, opening_question, model_set_persona_string=None,
                 if interlocutor == "human":
                     interlocutor_persona_set_str = "a human"
                 else:
-                    raise NotImplementedError("Per participant interlocutors not implementd for base models.")
-                    # interlocutor_persona_set_str = interlocutor["description"]
-                    # other issues, description ends with "."
-                    # it goes "The human's reply"... this mush be changed to interlocutor["name"]'s
+                    interlocutor_persona_set_str = interlocutor["description"].removesuffix(".")
 
                 if args.interlocutor_knows_persona:
                     chatbot_persona_str = f"The chatbot is pretending to be {simulated_participant['name']}. "
@@ -165,7 +162,10 @@ def simulate_conversation(args, opening_question, model_set_persona_string=None,
                 if args.long_messages:
                     n_sent_instr=""
                 else:
-                    n_sent_instr = "The human's every reply must be in one sentence only."
+                    if interlocutor == "human":
+                        n_sent_instr = "The human's every reply must be in one sentence only."
+                    else:
+                        n_sent_instr = f"{interlocutor['name']}'s every reply must be in one sentence only."
 
                 sys_msg = f"The following is a conversation between {interlocutor_persona_set_str} and a chatbot. {chatbot_persona_str}{n_sent_instr}"
 

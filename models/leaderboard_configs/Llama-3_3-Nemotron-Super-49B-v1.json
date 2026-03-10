@@ -1,0 +1,15 @@
+{
+  "_comment": "run with run_vllm_model_leaderboard.sh <model_id>",
+  "model_path": "/lustre/fsn1/projects/rech/imi/utu57ed/.cache/huggingface/hub/models--nvidia--Llama-3_3-Nemotron-Super-49B-v1/snapshots/1a2cb800fde0e2c100cf576215d7be3a5bffe717",
+  "model_class": "VllmModel",
+  "model_id": "model",
+  "system_message": true,
+  "base_model_template": false,
+  "reasoning": false,
+  "load_args": {},
+  "generation_args": {
+    "max_tokens": 100,
+    "n": 1,
+    "temperature": 0.7
+  }
+}
